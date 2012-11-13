@@ -32,7 +32,7 @@ function cmp($a, $b)
 
 	usort($rooms, "cmp");
 	global $PHP_SELF;
-	$ical_base = dirname($PHP_SELF) . '/report.php?areamatch=&namematch=&descrmatch=&creatormatch=&match_confirmed=2&match_contactperson=&output=0&output_format=2&sortby=r&sumby=d&phase=2&datatable=1&roommatch='
+	$ical_base = dirname($PHP_SELF) . '/report.php?areamatch=&namematch=&descrmatch=&creatormatch=&match_confirmed=2&match_contactperson=&output=0&output_format=2&sortby=r&sumby=d&phase=2&datatable=1&roommatch=';
 	print '<UL>';
 	foreach($rooms as $room) {
 	    $url = $ical_base . escape($room['roomName'])
