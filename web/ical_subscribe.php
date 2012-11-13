@@ -10,9 +10,8 @@ require_once 'fact0rfunc.inc.php';
 	$rooms = rooms_array();
 
 ### Stage 2 - First bit of "Welcome" html
+print_header($day, $month, $year, isset($area) ? $area : "", isset($room) ? $room : "");
 ?>
-<html>
-<body>
 <h2>Subscribing to bookings from the Resource Booking System from iCal</h2>
 <P>
 You can now subscribe to various "iCals" of the bookings residing in the Resource Booking System. These iCals are read only (you can only edit them through the web interface) however they may be useful in reminding you of the times you have booked equipment. 
@@ -50,6 +49,6 @@ function cmp($a, $b)
 
 <?PHP
 ### Stage 5 - HTML footer.
+
+output_trailer();
 ?>
-</body>
-</html>
