@@ -1510,7 +1510,14 @@ if ($phase == 2)
     {
       // We set $keep_private to FALSE here because we excluded all private
       // events in the SQL query
-      export_icalendar($res, FALSE, $report_end);
+      $extras = array();
+      if (!empty($roommatch))
+      {
+        // Useful apple extension
+        $extras[] = "X-WR-CALNAME:" . ical_escape_text("$roommatch - $mrbs_company");
+        //$extras[] = "X-WR-CALDESC:$calendarDesc";
+      }
+      export_icalendar($res, FALSE, $report_end, $extras);
       exit;
     }
     
