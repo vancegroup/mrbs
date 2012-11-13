@@ -304,7 +304,7 @@ class Mail_smtp extends Mail {
         }
 
         /* Send the message's headers and the body as SMTP data. */
-        $res = $this->_smtp->data($textHeaders . "\r\n\r\n" . $body);
+        $res = $this->_smtp->data($body, $textHeaders);
 		list(,$args) = $this->_smtp->getResponse();
 
 		if (preg_match("/Ok: queued as (.*)/", $args, $queued)) {
@@ -346,9 +346,10 @@ class Mail_smtp extends Mail {
         }
 
         include_once 'Net/SMTP.php';
-        $this->_smtp = &new Net_SMTP($this->host,
+        $this->_smtp = new Net_SMTP($this->host,
                                      $this->port,
-                                     $this->localhost);
+                                     $this->localhost,
+                                     $this->pipelining);
 
         /* If we still don't have an SMTP object at this point, fail. */
         if (is_object($this->_smtp) === false) {
