@@ -364,7 +364,7 @@ function create_icalendar($method, $components)
 //                          also contain the area name, the room name and the repeat
 //                          details (rep_type, end_date, rep_opt, rep_num_weeks)
 //    $export_end int       a Unix timestamp giving the end limit for the export
-function export_icalendar(&$res, $keep_private, $export_end=PHP_INT_MAX)
+function export_icalendar(&$res, $keep_private, $export_end=PHP_INT_MAX, $extra_header=array())
 {
   require_once "functions_view.inc";
   require_once "mrbs_sql.inc";
@@ -393,6 +393,10 @@ function export_icalendar(&$res, $keep_private, $export_end=PHP_INT_MAX)
   $last_repeat_id = 0;
   $private_text = "[" . get_vocab("private") . "]";
   
+  foreach ($extra_header as $extra)
+  {
+    $ical_events[] = $extra;
+  }
   for ($i = 0; ($row = sql_row_keyed($res, $i)); $i++)
   {
     $text_body = array();
