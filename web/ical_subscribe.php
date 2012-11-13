@@ -29,17 +29,22 @@ function cmp($a, $b)
     $cmp = strcmp($a['roomName'], $b['roomName']);
   return $cmp;
 }
-
+function escape($s)
+{
+  return mrbs_nl2br(htmlspecialchars($s));
+}
 	usort($rooms, "cmp");
 	global $PHP_SELF;
-	$ical_base = dirname($PHP_SELF) . '/report.php?areamatch=&namematch=&descrmatch=&creatormatch=&match_confirmed=2&match_contactperson=&output=0&output_format=2&sortby=r&sumby=d&phase=2&datatable=1&roommatch=';
+	//$ical_base = $_SERVER['SERVER_NAME'] . dirname($PHP_SELF) . '/report.php?areamatch=&namematch=&descrmatch=&creatormatch=&match_confirmed=2&match_contactperson=&output=0&output_format=2&sortby=r&sumby=d&phase=2&datatable=1&roommatch=';
+	$ical_base = $_SERVER['SERVER_NAME'] . dirname($PHP_SELF) . '/report.php?&match_confirmed=2&match_contactperson=&output=0&output_format=2&sortby=r&sumby=d&phase=2&datatable=1&roommatch=';
 	print '<UL>';
 	foreach($rooms as $room) {
-	    $url = $ical_base . escape($room['roomName'])
-		print '<LI><a href="webcal://academic.cleardefinition.com/reservations/mrbs/web/ical2.php?room=' . $room['roomID'] .
-			'">' . $room['areaName'] .' - ' . $room['roomName'] .  
+	    $noprotourl = $ical_base . escape($room['roomName']);
+	    $url = "http://" . $noprotourl;
+	    $webcalurl = "webcal://" . $noprotourl;
+		print '<LI><a href="' . $webcalurl . '">' . $room['areaName'] .' - ' . $room['roomName'] .  
 			'</a>' . ' or url to add to Google Calendar, etc: <a href="'. $url .
-			'">' . $url '</a>' . "\n";
+			'">' . $url . '</a>' . "\n";
 	} 
 	print '</UL>';
 
