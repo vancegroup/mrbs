@@ -31,14 +31,15 @@ function cmp($a, $b)
 }
 
 	usort($rooms, "cmp");
-
+	global $PHP_SELF;
+	$ical_base = dirname($PHP_SELF) . '/report.php?areamatch=&namematch=&descrmatch=&creatormatch=&match_confirmed=2&match_contactperson=&output=0&output_format=2&sortby=r&sumby=d&phase=2&datatable=1&roommatch='
 	print '<UL>';
 	foreach($rooms as $room) {
+	    $url = $ical_base . escape($room['roomName'])
 		print '<LI><a href="webcal://academic.cleardefinition.com/reservations/mrbs/web/ical2.php?room=' . $room['roomID'] .
 			'">' . $room['areaName'] .' - ' . $room['roomName'] .  
-			'</a>' . ' or url to add to Google Calendar, etc: <a href="http://academic.cleardefinition.com/reservations/mrbs/web/ical2.php?room='. 
-			$room['roomID'] . '">http://academic.cleardefinition.com/reservations/mrbs/web/ical2.php?room='. 
-			$room['roomID'] . '</a>' . "\n";
+			'</a>' . ' or url to add to Google Calendar, etc: <a href="'. $url .
+			'">' . $url '</a>' . "\n";
 	} 
 	print '</UL>';
 
