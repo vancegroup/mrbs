@@ -483,14 +483,6 @@ class Mail_RFC822 {
             $addresses[] = $address['address'];
         }
 
-        // Check that $addresses is set, if address like this:
-        // Groupname:;
-        // Then errors were appearing.
-        if (!count($addresses)){
-            $this->error = 'Empty group.';
-            return false;
-        }
-
         // Trim the whitespace from all of the address strings.
         array_map('trim', $addresses);
 
@@ -888,7 +880,7 @@ class Mail_RFC822 {
         $words = array();
 
         // Split the local_part into words.
-        while (count($parts) > 0){
+        while (count($parts) > 0) {
             $words[] = $this->_splitCheck($parts, '.');
             for ($i = 0; $i < $this->index + 1; $i++) {
                 array_shift($parts);
@@ -897,6 +889,10 @@ class Mail_RFC822 {
 
         // Validate each word.
         foreach ($words as $word) {
+            // word cannot be empty (#17317)
+            if ($word === '') {
+                return false;
+            }
             // If this word contains an unquoted space, it is invalid. (6.2.4)
             if (strpos($word, ' ') && $word[0] !== '"')
             {
