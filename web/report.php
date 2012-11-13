@@ -1059,6 +1059,7 @@ $to_year = get_form_var('to_year', 'int', $to_date['year']);
 $creatormatch = get_form_var('creatormatch', 'string');
 $areamatch = get_form_var('areamatch', 'string');
 $roommatch = get_form_var('roommatch', 'string');
+$roomidmatch = get_form_var('roomidmatch', 'int');
 $namematch = get_form_var('namematch', 'string');
 $descrmatch = get_form_var('descrmatch', 'string');
 $output = get_form_var('output', 'int', REPORT);
@@ -1227,6 +1228,11 @@ if ($phase == 2)
   {
     // sql_syntax_caseless_contains() does the SQL escaping
     $sql .= " AND" .  sql_syntax_caseless_contains("R.room_name", $roommatch);
+  }
+  if (!empty($roomidmatch) && isset($roomidmatch) && $roomidmatch !== '')
+  {
+    // sql_syntax_caseless_contains() does the SQL escaping
+    $sql .= " AND R.id=" . $roomidmatch;
   }
   if (!empty($typematch))
   {
