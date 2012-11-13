@@ -2,27 +2,67 @@
 
 // $Id$
 
-/////////////////////////////////////////
-// Set timezone, if one has been provided
 
-global $timezone;
-
-if (isset($timezone))
+// Set the default timezone.   Caters for PHP servers that don't
+// have date_default_timezone_set()
+function mrbs_default_timezone_set($timezone)
 {
-  if (function_exists("date_default_timezone_set"))
+  global $area_defaults;
+  
+  if (!isset($timezone))
   {
-    date_default_timezone_set($timezone) or die("Configuration error: invalid timezone.");
+    // to prevent people running into DST problems
+    $message = 'Configuration error: $timezone has not been set.';
+    trigger_error($message, E_USER_WARNING);
+    fatal_error(FALSE, $message);
   }
   else
   {
-    putenv("TZ=$timezone");
+    if (function_exists("date_default_timezone_set"))
+    {
+      // We try and set the timezone to $timezone, which is the timezone setting
+      // for the area.   If that fails we try the default for new areas.   And if
+      // that fails we try the server timezone.
+      if (!date_default_timezone_set($timezone))
+      {
+        $fallback_timezone = $area_defaults['timezone'];
+        if (!date_default_timezone_set($fallback_timezone))
+        {
+          // date_default_timezone_get() was introduced at the same time as
+          // date_default_timezone_set(), so it will exist
+          $fallback_timezone = date_default_timezone_get();
+          if (!date_default_timezone_set($fallback_timezone))
+          {
+            $message = "Could not set any timezone";
+            trigger_error($message, E_USER_WARNING);
+            fatal_error(TRUE, $message);
+          }
+        }
+        trigger_error("Could not set timezone to '$timezone'; using '$fallback_timezone' instead", E_USER_WARNING);
+      }
+    }
+    else
+    {
+      putenv("TZ=$timezone");
+    }
   }
 }
-else
+
+
+// Get the default timezone.  Caters for PHP servers that don't
+// have date_default_timezone_get()
+function mrbs_default_timezone_get()
 {
-  // to prevent people running into DST problems
-  die('Configuration error: $timezone has not been set.');
+  if (function_exists("date_default_timezone_get"))
+  {
+    return date_default_timezone_get();
+  }
+  else
+  {
+    return getenv('TZ');
+  }
 }
+
 
 // Deal with $private_xxxx overrides.  Simplifies
 // logic related to private bookings.
@@ -40,6 +80,19 @@ elseif ($private_override == "public" )
 
 $done_header = FALSE;
 
+
+// Outputs the HTTP headers
+function http_headers()
+{
+  header("Content-Type: text/html; charset=" . get_charset());
+  // We want to prevent IE8 offering "Compatability View" as that really
+  // messes up MRBS, especially on the Report page
+  header("X-UA-Compatible: IE=Edge");
+  header("Pragma: no-cache");                          // HTTP 1.0
+  header("Expires: Mon, 26 Jul 1997 05:00:00 GMT");    // Date in the pastt
+}
+
+
 // Prints a very simple header.  This may be necessary on occasions, such as
 // during a database upgrade, when some of the features that the normal
 // header uses are not yet available.
@@ -52,9 +105,7 @@ function print_simple_header()
     return;
   } 
   
-  header("Content-Type: text/html; charset=" . get_charset());
-  header("Pragma: no-cache");                          // HTTP 1.0
-  header("Expires: Mon, 26 Jul 1997 05:00:00 GMT");    // Date in the past
+  http_headers();
   echo DOCTYPE;
  ?>
 
@@ -70,6 +121,7 @@ function print_simple_header()
   $done_header = TRUE; 
 }
 
+
 // Print the page header
 function print_header($day, $month, $year, $area, $room)
 {
@@ -82,7 +134,10 @@ function print_header($day, $month, $year, $area, $room)
   
   // Load the print_theme_header function appropriate to the theme.    If there
   // isn't one then fall back to the default header.
-  @include_once "Themes/$theme/header.inc";
+  if (file_exists("Themes/$theme/header.inc"))
+  {
+    include_once "Themes/$theme/header.inc";
+  }
   if (!function_exists("print_theme_header"))
   {
     require_once "Themes/default/header.inc";
@@ -99,7 +154,10 @@ function print_header($day, $month, $year, $area, $room)
 function print_footer($and_exit)
 {
   global $theme;
-  @include_once "Themes/$theme/footer.inc";
+  if (file_exists("Themes/$theme/footer.inc"))
+  {
+    include_once "Themes/$theme/footer.inc";
+  }
   if (function_exists("print_theme_footer"))
   {
     print_theme_footer();
@@ -128,9 +186,13 @@ function rfc1123_date($timestamp)
 
 // A little helper function to send an "Expires" header. Just one
 // parameter, the number of seconds in the future to set the expiry
+// (We also send a couple of extra headers as the "Expires" header alone
+// does not always result in caching.)
 function expires_header($seconds)
 {
   header("Expires: ".rfc1123_date(time()+$seconds));
+  header("Pragma: cache");
+  header("Cache-Control: max-age=$seconds");
 }
 
 // Converts a duration of $dur seconds into a duration of
@@ -187,7 +249,7 @@ function toTimeString(&$dur, &$units, $translate=TRUE)
   if (is_float($dur))
   {
     $dur = sprintf('%.3f', $dur);
-    $dur = (string) (float) $dur;  // removes trailing zeros
+    $dur = rtrim($dur, '0');  // removes trailing zeros
   }
   
   // Translate into local language if required
@@ -307,13 +369,12 @@ function fromPeriodString($start_period, &$units, $dur_units)
 //
 // Returns an array indexed by 'duration' and 'dur_units'
 //
-//    $start_time   int     start time as a Unix timestamp
-//    $end_time     int     end time as a Unix timestamp
-//    $translate    boolean whether to translate into the browser language
-function get_duration($start_time, $end_time, $translate=TRUE)
+//    $start_time     int     start time as a Unix timestamp
+//    $end_time       int     end time as a Unix timestamp
+//    $enable_periods boolean whether we are using periods
+//    $translate      boolean whether to translate into the browser language
+function get_duration($start_time, $end_time, $enable_periods, $translate=TRUE)
 {
-  global $enable_periods;
-  
   $result = array();
   $result['duration'] = $end_time - $start_time;
   // Need to make DST correct in opposite direction to entry creation
@@ -334,20 +395,26 @@ function get_duration($start_time, $end_time, $translate=TRUE)
 
 
 // Generate an input field with an associated label
-// Optional fifth parameter: $maxlength - the maximum length of input allowed
-function generate_input($label_text, $name, $value, $disabled=FALSE)
+
+//   $maxlength   the maximum length of input allowed
+
+//   $attributes  additional attributes, allowing HTML5 input types such as number and
+//                email to be used.   Note that additional attributes such as min, etc.
+//                can also be included in the string, eg 'type="number" min="1" step="1"'.
+function generate_input($label_text, $name, $value, $disabled=FALSE, $maxlength=NULL, $attributes=NULL)
 {
-  // get any optional fifth parameter
-  if (func_num_args() > 4)
-  {
-    $maxlength = func_get_arg(4);
-  }
   // generate the HTML
   $html  = "<label for=\"$name\">$label_text</label>\n";
-  $html .= "<input id=\"$name\" name=\"$name\" type=\"text\"";
+  $html .= "<input" . ((isset($attributes)) ? " $attributes" : "") . " id=\"$name\" name=\"$name\"";
   $html .= ($disabled) ? " disabled=\"disabled\"" : '';
   $html .= (isset($maxlength)) ? " maxlength=\"$maxlength\"" : '';
-  $html .= " value=\"" . htmlspecialchars($value) . "\">\n";
+  // Don't give an empty string if it's a number as that's not a valid floating point number
+  // and will fail HTML5 validation
+  if (!isset($attributes) || (strpos($attributes, 'type="number"') === FALSE) || ($value != '') )
+  {
+    $html .= " value=\"" . htmlspecialchars($value) . "\"";
+  }
+  $html .= ">\n";
   // and a hidden input if the input box is disabled
   if ($disabled)
   {
@@ -357,33 +424,68 @@ function generate_input($label_text, $name, $value, $disabled=FALSE)
   echo $html;
 }
 
+
+// Generate a group of radio buttons
+// $buttons is an associative array where the key is the value of the button
+// and the value is the button text
+function generate_radio_group($label_text, $name, $current, $buttons)
+{
+  echo "<label>$label_text:</label>\n";
+  echo "<div class=\"group\">\n";
+  // Output each radio button
+  foreach ($buttons as $value => $token)
+  {
+    echo "<label>";
+    echo "<input class=\"radio\" type=\"radio\" name=\"$name\" value=\"$value\"";          
+    if ($current == $value)
+    {
+      echo " checked=\"checked\"";
+    }
+    echo ">" . get_vocab($token);
+    echo "</label>\n";
+  }
+  echo "</div>\n";
+}
+
+
 // Generates a select box from $options, an array of options
 // If $disabled is TRUE, then the select box is disabled and a hidden
-// input is generated to pass through $value
-function generate_select($label_text, $name, $value, $options, 
+// input is generated to pass through $current
+function generate_select($label_text, $name, $current, $options, 
                          $mandatory = FALSE, $disabled=FALSE)
 {
   // generate the HTML
   $html  = "<label for=\"$name\">$label_text</label>\n";
   $html .= "<select id=\"$name\" name=\"$name\"";
-  $html .= ($disabled) ? " disabled=\"disabled\"" : '';
+  $html .= ($disabled) ? " disabled=\"disabled\"" : "";
+  $html .= ($mandatory) ? " required" : "";
   $html .= ">\n";
-  if ($mandatory)
+
+  // We can cope with both associative and ordinary arrays
+  if (is_assoc($options))
   {
-    $options = array_merge(array(""),$options);
+    foreach ($options as $key => $value)
+    {
+      $html .= "<option value=\"$key\"";
+      $html .= (isset($current) && ($current == $key)) ? " selected=\"selected\"" : '';
+      $html .= ">".htmlspecialchars($value)."</option>\n";
+    }
   }
-  foreach ($options as $option)
+  else
   {
-    $html .= "<option";
-    $html .= (isset($value) && ($value == $option)) ? " selected=\"selected\"" : '';
-    $html .= ">".htmlspecialchars($option)."</option>\n";
+    foreach ($options as $option)
+    {
+      $html .= "<option";
+      $html .= (isset($current) && ($current == $option)) ? " selected=\"selected\"" : '';
+      $html .= ">".htmlspecialchars($option)."</option>\n";
+    }
   }
   $html .= "</select>\n";
   // and a hidden input if the select box is disabled
   if ($disabled)
   {
     $html .= "<input type=\"hidden\" name=\"$name\" value=\"".
-      htmlspecialchars($value)."\">\n";
+      htmlspecialchars($current)."\">\n";
   }
   
   echo $html;
@@ -392,12 +494,15 @@ function generate_select($label_text, $name, $value, $options,
 // Generate a textarea with an associated label
 // If $disabled is TRUE, then the textarea is disabled and a hidden
 // input is generated to pass through $value
-function generate_textarea($label_text, $name, $value, $disabled=FALSE)
+//
+//   $attributes  additional attributes, allowing HTML5 input types such as required
+function generate_textarea($label_text, $name, $value, $disabled=FALSE, $attributes=NULL)
 {
   // generate the HTML
   $html  = "<label for=\"$name\">$label_text</label>\n";
   // textarea rows and cols are overridden by CSS height and width
   $html .= "<textarea id=\"$name\" name=\"$name\" rows=\"8\" cols=\"40\"";
+  $html .= (isset($attributes)) ? " $attributes" : "";
   $html .= ($disabled) ? " disabled=\"disabled\"" : '';
   $html .= ">" . htmlspecialchars($value) . "</textarea>\n";
   // and a hidden input if the textarea is disabled
@@ -416,15 +521,18 @@ function generate_textarea($label_text, $name, $value, $disabled=FALSE)
 // $form_id is an optional fifth parameter.   If set it specifies the id of
 // a form to submit when the datepicker is closed.
 //
+// $disabled:  TRUE if the SELECT is to be disabled (Note: hidden inputs will be
+// created if the SELECT is disabled)
+//
 // Whether or not JavaScript is enabled the date is passed back in three separate
 // variables:  ${prefix}day, ${prefix}month and ${prefix}year
 //
 // The function passes back three separate variables, rather than a single date 
 // variable, partly for compatibility with previous implementations of genDateSelector()
 // and partly because it's easier to do this for the non-JavaScript version.
-function genDateSelector($prefix, $day, $month, $year, $form_id='')
+function genDateSelector($prefix, $day, $month, $year, $form_id='', $disabled=FALSE)
 {
-  global $strftime_format;
+  global $strftime_format, $year_range;
   
   // Make sure we've got a date
   if (empty($day) or empty($month) or empty($year))
@@ -444,8 +552,8 @@ function genDateSelector($prefix, $day, $month, $year, $form_id='')
   $month_js = $month - 1;
   
   // First and last dates to show in year select
-  $min = min($year, date("Y")) - 5;
-  $max = max($year, date("Y")) + 5;
+  $min = min($year, date("Y")) - $year_range['back'];
+  $max = max($year, date("Y")) + $year_range['ahead'];
   
   $datepicker_baseid = "${prefix}datepicker";
   
@@ -455,14 +563,18 @@ function genDateSelector($prefix, $day, $month, $year, $form_id='')
   // datepicker calendar.
   echo "<span id=\"${prefix}dateselector\">\n";
   // the day selector
-  echo "<select name=\"${prefix}day\">\n";
+  echo "<select name=\"${prefix}day\"" . 
+       ($disabled ? " disabled=\"disabled\"" : "") .
+       ">\n"; 
   for ($i = 1; $i <= 31; $i++)
   {
     echo "<option" . ($i == $day ? " selected=\"selected\"" : "") . ">$i</option>\n";
   }
   echo "</select>\n";
   // the month selector
-  echo "<select name=\"${prefix}month\">\n";
+  echo "<select name=\"${prefix}month\"" . 
+       ($disabled ? " disabled=\"disabled\"" : "") .
+       ">\n"; 
   for ($i = 1; $i <= 12; $i++)
   {
     $m = utf8_strftime($strftime_format['mon'], mktime(0, 0, 0, $i, 1, $year));  
@@ -470,62 +582,75 @@ function genDateSelector($prefix, $day, $month, $year, $form_id='')
   }
   echo "</select>\n";
   // the year selector
-  echo "<select name=\"${prefix}year\">\n";
+  echo "<select name=\"${prefix}year\"" . 
+       ($disabled ? " disabled=\"disabled\"" : "") .
+       ">\n";
   for ($i = $min; $i <= $max; $i++)
   {
     echo "<option value=\"$i\"" . ($i == $year ? " selected=\"selected\"" : "") . ">$i</option>\n";
   }
   echo "</select>\n";
+  // If the select is disabled we'll still pass through the values as hidden inputs
+  if ($disabled)
+  {
+    echo "<input type=\"hidden\" name=\"${prefix}day\" value=\"$day\">\n";
+    echo "<input type=\"hidden\" name=\"${prefix}month\" value=\"$month\">\n";
+    echo "<input type=\"hidden\" name=\"${prefix}year\" value=\"$year\">\n";
+  }
   echo "</span>\n";
   
   // Now use JavaScript to overwrite the contents of this span with a datepicker calendar
   ?>
   <script type="text/javascript">
 
-	$(function() {
-		$("#<?php echo $datepicker_baseid ?>").datepicker({yearRange: <?php echo "'$min:$max'" ?>,
-		                                                   altField: '#<?php echo $datepicker_baseid ?>_alt'
-		                                                   <?php
-		                                                   if (!empty($form_id))
-		                                                   {
-		                                                     echo ", onClose: function(dateText, inst) {datepicker_close(dateText, inst, '$form_id');}";
-		                                                   }
-		                                                   ?>
-		                                                  });
-		<?php
-	  // Populate the input fields with the initial values
-	  ?>
-	  var initial_date = new Date(<?php echo "$year, $month_js, $day" ?>);
-	  var dateFormat = $("#<?php echo $datepicker_baseid ?>").datepicker( "option", "dateFormat" );
-	  document.getElementById(<?php echo "'${datepicker_baseid}'" ?>).value = $.datepicker.formatDate(dateFormat, initial_date);
-	  document.getElementById(<?php echo "'${datepicker_baseid}_alt_day'" ?>).value = <?php echo $day ?>;
+  $(function() {
+    $("#<?php echo $datepicker_baseid ?>").datepicker({yearRange: <?php echo "'$min:$max'" ?>,
+                                                       altField: '#<?php echo $datepicker_baseid ?>_alt'
+                                                       <?php
+                                                       if (!empty($form_id))
+                                                       {
+                                                         echo ", onClose: function(dateText, inst) {datepicker_close(dateText, inst, '$form_id');}";
+                                                       }
+                                                       if ($disabled)
+                                                       {
+                                                         echo ", disabled: true";
+                                                       }
+                                                       ?>
+                                                      });
+    <?php
+    // Populate the input fields with the initial values
+    ?>
+    var initial_date = new Date(<?php echo "$year, $month_js, $day" ?>);
+    var dateFormat = $("#<?php echo $datepicker_baseid ?>").datepicker( "option", "dateFormat" );
+    document.getElementById(<?php echo "'${datepicker_baseid}'" ?>).value = $.datepicker.formatDate(dateFormat, initial_date);
+    document.getElementById(<?php echo "'${datepicker_baseid}_alt_day'" ?>).value = <?php echo $day ?>;
     document.getElementById(<?php echo "'${datepicker_baseid}_alt_month'" ?>).value = <?php echo $month ?>;
     document.getElementById(<?php echo "'${datepicker_baseid}_alt_year'" ?>).value = <?php echo $year ?>;
-	  $(".ui-datepicker").draggable();
-	});
+    $(".ui-datepicker").draggable();
+  });
  
-	
-	var dateselector = document.getElementById(<?php echo "'${prefix}dateselector'" ?>);
-	var datepicker_html = '<input class="date" type="text" id="<?php echo $datepicker_baseid ?>">\n';
-	<?php
-	// The next input is disabled because we don't need to pass the value through to
-  // the form and we don't want the value cluttering up the URL (it's a GET).
+  
+  var dateselector = document.getElementById(<?php echo "'${prefix}dateselector'" ?>);
+  var datepicker_html = '<input class="date" type="text" id="<?php echo $datepicker_baseid ?>">\n';
+  <?php
+  // The next input is disabled because we don't need to pass the value through to
+  // the form and we don't want the value cluttering up the URL (if it's a GET).
   // It's just used as a holder for the date in a known format so that it can
   // then be used by datepicker_close() to populate the following three inputs.
   ?>
-	datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt"'
-	datepicker_html += ' name="<?php echo $prefix ?>_alt"';
-	datepicker_html += ' value="<?php echo "${year}-${month}-${day}" ?>"';
-	datepicker_html += ' disabled="disabled">\n';
-	<?php
-	// These three inputs we do want
-	?>
-	datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt_day" name="<?php echo $prefix ?>day">\n';
-	datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt_month" name="<?php echo $prefix ?>month">\n';
-	datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt_year" name="<?php echo $prefix ?>year">\n';
-	dateselector.innerHTML = datepicker_html;
-	
-	</script>
+  datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt"'
+  datepicker_html += ' name="<?php echo $prefix ?>_alt"';
+  datepicker_html += ' value="<?php echo "${year}-${month}-${day}" ?>"';
+  datepicker_html += ' disabled="disabled">\n';
+  <?php
+  // These three inputs we do want
+  ?>
+  datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt_day" name="<?php echo $prefix ?>day">\n';
+  datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt_month" name="<?php echo $prefix ?>month">\n';
+  datepicker_html += '<input type="hidden" id="<?php echo $datepicker_baseid ?>_alt_year" name="<?php echo $prefix ?>year">\n';
+  dateselector.innerHTML = datepicker_html;
+  
+  </script>
   <?php
 }
 
@@ -534,23 +659,33 @@ function genDateSelector($prefix, $day, $month, $year, $form_id='')
 // errors which "should never happen", not those caused by bad inputs.
 // If $need_header!=0 output the top of the page too, else assume the
 // caller did that. Alway outputs the bottom of the page and exits.
-function fatal_error($need_header, $message)
+function fatal_error($need_header, $message, $show_form_data = true)
 {
-  global $simple_trailer, $weekstarts, $view_week_number;
-  
+  global $simple_trailer, $weekstarts, $view_week_number, $strftime_format;
+
   if ($need_header)
   {
     print_header(0, 0, 0, 0, "");
   }
   error_log("MRBS: ".$message);
-  if (!empty($_GET))
-    error_log("MRBS GET: ".print_r($_GET, true));
-  if (!empty($_POST))
-    error_log("MRBS POST: ".print_r($_POST, true));
+
+  if ($show_form_data)
+  {
+    if (!empty($_GET))
+    {
+      error_log("MRBS GET: ".print_r($_GET, true));
+    }
+    if (!empty($_POST))
+    {
+      error_log("MRBS POST: ".print_r($_POST, true));
+    }
+  }
   if (!empty($_SESSION))
+  {
     error_log("MRBS SESSION: ".print_r($_SESSION, true));
+  }
   echo "<p>$message</p>";
-  require_once "trailer.inc";
+  output_trailer();
   exit;
 }
 
@@ -561,7 +696,7 @@ function fatal_error($need_header, $message)
 // http://www.php.net/manual/function.addcslashes.php
 function escape_js($str)
 {
-  return addcslashes($str, "\\\'\"&\n\r<>");
+  return addcslashes($str, "\\\'\"&\n\r<>/");
 }
 
 
@@ -654,23 +789,83 @@ function get_area($room)
   return ($area < 0 ? 0 : $area);
 }
 
+
+// Clean up a row from the area table, making sure there are no nulls, casting
+// boolean fields into bools and doing some sanity checking
+function clean_area_row($row)
+{
+  global $force_resolution, $area_defaults, $boolean_fields, $private_override_options;
+  
+  foreach ($row as $key => $value)
+  {
+    // If the "per area" setting is in the database, then use that.   Otherwise
+    // just stick with the default setting from the config file.
+    // (don't use the database setting if $force_resolution is TRUE 
+    // and we're looking at the resolution field)
+    if (($key != 'resolution') || empty($force_resolution))
+    {
+      $row[$key] = (isset($row[$key])) ? $value : $area_defaults[$key];
+    }
+    // Cast those fields which are booleans into booleans
+    if (in_array($key, $boolean_fields['area']))
+    {
+      $row[$key] = (bool) $row[$key];
+    }
+  }
+  // Do some sanity checking in case the area table is somehow messed up
+  // (1) 'private_override' must be a valid value
+  if (array_key_exists('private_override', $row) &&
+      !in_array($row['private_override'], $private_override_options))
+  {
+    $row['private_override'] = 'private';  // the safest default
+    $message = "Invalid value for 'private_override' in the area table.  Using '${row['private_override']}'.";
+    trigger_error($message, E_USER_WARNING);
+  }
+  // (2) 'resolution' must be positive
+  if (array_key_exists('resolution', $row) &&
+      (empty($row['resolution']) || ($row['resolution'] < 0)))
+  {
+    $row['resolution'] = 30*60;  // 30 minutes, a reasonable fallback
+    $message = "Invalid value for 'resolution' in the area table.   Using ${row['resolution']} seconds.";
+    trigger_error($message, E_USER_WARNING);
+  }
+  
+  return $row;
+}
+
+
 // Update the default area settings with the ones specific to this area.
-// If no value is set in the database, use the value from the config file
+// If no value is set in the database, use the value from the config file.
+// If $area is empty, use the default area
 function get_area_settings($area)
 {
-  global $tbl_area, $force_resolution;
-  global $resolution, $default_duration, $morningstarts, $morningstarts_minutes, $eveningends, $eveningends_minutes;
+  global $tbl_area;
+  global $resolution, $default_duration, $default_duration_all_day;
+  global $morningstarts, $morningstarts_minutes, $eveningends, $eveningends_minutes;
   global $private_enabled, $private_default, $private_mandatory, $private_override;
   global $min_book_ahead_enabled, $max_book_ahead_enabled, $min_book_ahead_secs, $max_book_ahead_secs;
-  global $approval_enabled, $reminders_enabled, $enable_periods, $boolean_fields;
-  global $confirmation_enabled, $confirmed_default;
+  global $approval_enabled, $reminders_enabled, $enable_periods;
+  global $confirmation_enabled, $confirmed_default, $timezone;
+  global $max_per_interval_area_enabled, $max_per_interval_area;
+  global $interval_types;
+  
+  if (empty($area))
+  {
+    $area = get_default_area();
+  }
   
   // Get all the "per area" config settings                  
-  $sql = "SELECT resolution, default_duration, morningstarts, morningstarts_minutes,
+  $sql = "SELECT timezone, resolution, default_duration, default_duration_all_day,
+                 morningstarts, morningstarts_minutes,
                  eveningends, eveningends_minutes,
                  private_enabled, private_default, private_mandatory, private_override,
                  min_book_ahead_enabled, max_book_ahead_enabled,
                  min_book_ahead_secs, max_book_ahead_secs,
+                 max_per_day_enabled, max_per_day,
+                 max_per_week_enabled, max_per_week,
+                 max_per_month_enabled, max_per_month,
+                 max_per_year_enabled, max_per_year,
+                 max_per_future_enabled, max_per_future,
                  approval_enabled, reminders_enabled, enable_periods,
                  confirmation_enabled, confirmed_default
           FROM $tbl_area 
@@ -679,29 +874,40 @@ function get_area_settings($area)
   $res = sql_query($sql);
   if (!$res || (sql_count($res) == 0))
   {
+    // We still need to set the timezone even if the query didn't
+    // return any results
+    mrbs_default_timezone_set($timezone);
     return;
   }
   else
   {
-    $row = sql_row_keyed($res, 0);
-    foreach ($row as $field => $value)
+    $row = clean_area_row(sql_row_keyed($res, 0));
+    foreach ($row as $key => $value)
     {
-      // If the "per area" setting is in the database, then use that.   Otherwise
-      // just stick with the default setting from the config file.
-      // (don't use the database setting if $force_resolution is TRUE 
-      // and we're looking at the resolution field)
-      if (($field != 'resolution') || empty($force_resolution))
-      {
-        $$field = (isset($row[$field])) ? $value : $$field;
-      }
-      // Cast those fields which are booleans into booleans
-      if (in_array($field, $boolean_fields['area']))
-      {
-        $$field = (bool) $$field;
-      }
+      $$key = $value;
     }
   }
+  // Set the timezone
+  mrbs_default_timezone_set($timezone);
+  
+  // Set the $max_per_interval_area_enabled and $max_per_interval_area arrays,
+  // which are handled slightly differently
+  foreach ($interval_types as $interval_type)
+  {
+    $var = "max_per_${interval_type}_enabled";
+    $max_per_interval_area_enabled[$interval_type] = $$var;
+    $var = "max_per_${interval_type}";
+    $max_per_interval_area[$interval_type] = $$var;
+  }
+  
+  // If we're using periods then set the rsolution to 60 seconds
+  if ($enable_periods)
+  {
+    $resolution = 60;
+  }
+  
 }
+
 
 // generate the predicate for use in an SQL query to test whether
 // an area has $field set
@@ -850,32 +1056,15 @@ function mrbs_nl2br($string)
 // should be sufficient in most MRBS circumstances.   This could
 // always be extended later to do something more sophisticated if
 // necessary.
-function mrbs_entity_decode($string)
+//
+// Note: the charset defaults to UTF-8.  This is slightly different from the
+// behaviour in the PHP html_entity_decode() function where the default charset
+// was only changed from ISO-8859-1 to UTF-8 in PHP 5.4.0
+function mrbs_entity_decode($string, $quote_style=ENT_COMPAT, $charset = 'UTF-8')
 {
-  $n_args = func_num_args();
-  if ($n_args > 1)
-  {
-    $quote_style = func_get_arg(1);
-  }
-  if ($n_args > 2)
-  {
-    $charset = func_get_arg(2);
-  }
-  
   if (function_exists('version_compare') && version_compare(PHP_VERSION, '5.0.0', 'ge'))
   {
-    switch ($n_args)
-    {
-      case 3:
-        $string = html_entity_decode($string, $quote_style, $charset);
-        break;
-      case 2:
-        $string = html_entity_decode($string, $quote_style);
-        break;
-      default:
-        $string = html_entity_decode($string);
-        break;
-    }  
+    $string = html_entity_decode($string, $quote_style, $charset);
   }
   else
   {
@@ -905,28 +1094,13 @@ function validate_email_list($list)
   return TRUE;
 }
 
-// Output a start table cell tag <td> with color class.
-// $colclass is an entry type (A-J), zebra stripes if
-// empty or row_highlight if highlighted.
-// $slots is the number of time slots high that the cell should be
-function tdcell($colclass, $slots)
-{
-  global $times_along_top;
-  echo "<td class=\"$colclass\"";
-  if ($slots > 1)
-  // No need to output more HTML than necessary
-  {
-    echo " " . (($times_along_top) ? "colspan" : "rowspan") . "=\"$slots\"";
-  }
-  echo ">\n";
-}
 
 // Display the entry-type color key. This has up to 2 rows, up to 5 columns.
 function show_colour_key()
 {
-  global $typel;
+  global $booking_types;
   // set the table width.   Default is 5, but try and avoid rows of unequal length
-  switch (count($typel))
+  switch (count($booking_types))
   {
     case '6':
       $table_width = 3;
@@ -939,27 +1113,25 @@ function show_colour_key()
       $table_width = 5;
   }
   echo "<table id=\"colour_key\"><tr>\n";
-  $nct = 0;
-  for ($ct = "A"; $ct <= "Z"; $ct++)
+  $n = 0;
+  foreach ($booking_types as $key)
   {
-    if (!empty($typel[$ct]))
+    $value = get_type_vocab($key);
+    if (++$n > $table_width)
     {
-      if (++$nct > $table_width)
-      {
-        $nct = 1;
-        echo "</tr><tr>";
-      }
-      tdcell($ct, 1);
-      echo "<div class=\"celldiv slots1\" " .  // put the description inside a div which will give clipping in case of long names
-      "title=\"$typel[$ct]\">\n";        // but put the name in the title so you can still read it all if you hover over it
-      echo "$typel[$ct]</div></td>\n";
+      $n = 1;
+      echo "</tr><tr>";
     }
+    echo tdcell($key, 1);
+    echo "<div class=\"celldiv slots1\" " .  // put the description inside a div which will give clipping in case of long names
+    "title=\"$value\">\n";        // but put the name in the title so you can still read it all if you hover over it
+    echo "$value</div></td>\n";
   }
   // If there is more than one row and the bottom row isn't complete then 
   // pad it out with a single merged cell
-  if ((count($typel) > $table_width) && ($nct < $table_width))
+  if ((count($booking_types) > $table_width) && ($n < $table_width))
   {
-    echo "<td colspan=\"" . ($table_width - $nct) . "\"" .
+    echo "<td colspan=\"" . ($table_width - $n) . "\"" .
         " id=\"row_padding\">&nbsp;</td>\n";
   }
   echo "</tr></table>\n";
@@ -1095,6 +1267,17 @@ function make_room_select_html ($link, $area, $current, $year, $month, $day)
   }
   return $out_html;
 } // end make_room_select_html
+
+
+// returns the numeric day of the week (0-6) in terms of the MRBS week as defined by 
+// $weekstarts.   For example if $weekstarts is set to 2 (Tuesday) and a $time for
+// a Wednesday is given, then 1 is returned.
+function day_of_MRBS_week($time)
+{
+  global $weekstarts;
+  
+  return (date('w', $time) - $weekstarts + 7) % 7;
+}
 
 
 // This will return the appropriate value for isdst for mktime().
@@ -1275,562 +1458,6 @@ function is_private_event($privacy_status)
   return $privacy_status;
 }
 
-
-function map_add_booking ($row, &$column, $am7, $pm7, $format)
-{
-  // Enters the contents of the booking found in $row into $column, which is
-  // a column of the map of the bookings being prepared ready for display.
-  //
-  // $column    the column of the map that is being prepared (see below)
-  // $row       a booking from the database
-  // $am7       the start of the first slot of the booking day (Unix timestamp)
-  // $pm7       the start of the last slot of the booking day (Unix timestamp)
-  // $format    time format used for indexing the $map array
-  
-  // $row is expected to have the following field names, when present:
-  //       room_id
-  //       start_time
-  //       end_time
-  //       name
-  //       repeat_id
-  //       entry_id
-  //       type
-  //       entry_description
-  //       entry_create_by
-  //       status
-  
-  // $column is a column of the map of the screen that will be displayed
-  // It looks like:
-  //     $column[Time][n][id]
-  //                     [is_repeat]
-  //                     [color]
-  //                     [data]
-  //                     [long_descr]
-  //                     [start_time]
-  //                     [slots]
-  //                     [status]
-  
-  // slots records the duration of the booking in number of time slots.
-  // Used to calculate how high to make the block used for clipping
-  // overflow descriptions.
-
-  // Fill in the map for this meeting. Start at the meeting start time,
-  // or the day start time, whichever is later. End one slot before the
-  // meeting end time (since the next slot is for meetings which start then),
-  // or at the last slot in the day, whichever is earlier.
-  // Time is of the format HHMM without leading zeros.
-  //
-  // [n] exists because it's possible that there may be multiple bookings
-  // in the same time slot.   Normally this won't be the case.   However it
-  // can arise legitimately if you increase the resolution, or shift the 
-  // displayed day.   For example if you previously had a resolution of 1800 
-  // seconds you might have a booking (A) for 1000-1130 and another (B) for 1130-1230.
-  // If you then increase the resolution to 3600 seconds, these two bookings 
-  // will both occupy the 1100-1200 time slot.   [n] starts at 0.   For
-  // the example above the map for the room would look like this
-  //
-  //       0  1
-  // 1000  A
-  // 1100  A  B
-  // 1200  B
-  //
-  // Note: int casts on database rows for max may be needed for PHP3.
-  // Adjust the starting and ending times so that bookings which don't
-  // start or end at a recognized time still appear.
-  
-  global $resolution;
-  global $is_private_field;
-  
-  $user = getUserName();
-  if (is_private_event($row['status'] & STATUS_PRIVATE) &&
-         !getWritable($row['entry_create_by'], $user, $row['room_id']))
-  {
-    $row['status'] |= STATUS_PRIVATE;   // Set the private bit
-    if ($is_private_field['entry.name'])
-    {
-      $row['name']= "[".get_vocab('unavailable')."]";
-    }
-    if ($is_private_field['entry.description'])
-    {
-      $row['entry_description']= "[".get_vocab('unavailable')."]";
-    }
-  }
-  else
-  {
-    $row['status'] &= ~STATUS_PRIVATE;  // Clear the private bit
-  }
-
-  $start_t = max(round_t_down($row['start_time'], $resolution, $am7), $am7);
-  $end_t = min(round_t_up($row['end_time'], $resolution, $am7) - $resolution, $pm7);
-  // calculate the times used for indexing
-  $time_start_t = date($format,$start_t);
-  $time_end_t = date($format,$end_t);
-  
-
-  for ($t = $start_t; $t <= $end_t; $t += $resolution)
-  { 
-    $time_t = date($format,$t);
-    
-    // find the first free index (in case there are multiple bookings in a timeslot)
-    $n = 0;
-    while (!empty($column[$time_t][$n]["id"]))
-    {
-      $n++;
-    }
-    
-    // fill in the id, type and start time
-    $column[$time_t][$n]["id"] = $row['entry_id'];
-    $column[$time_t][$n]["is_repeat"] = !empty($row['repeat_id']);
-    $column[$time_t][$n]["status"] = $row['status'];
-    $column[$time_t][$n]["color"] = $row['type'];
-    $column[$time_t][$n]["start_time"] = utf8_strftime(hour_min_format(), $row['start_time']);
-    $column[$time_t][$n]["slots"] = null;  // to avoid undefined index NOTICE errors
-    // if it's a multiple booking also fill in the name and description
-    if ($n > 0)
-    {
-      $column[$time_t][$n]["data"] = $row['name'];
-      $column[$time_t][$n]["long_descr"] = $row['entry_description'];
-    }
-    // otherwise just leave them blank (we'll fill in the first whole slot later)
-    else
-    {
-      $column[$time_t][$n]["data"] = "";
-      $column[$time_t][$n]["long_descr"] = ""; 
-    }
-  } // end for
-  
-  
-  // Show the name of the booker, the description and the number of complete
-  // slots in the first complete slot that the booking happens in, or at the 
-  // start of the day if it started before today.
-
-  // Find the number of time slots that the booking occupies, and the index
-  // of the first slot that this booking has entirely to itself
-  $n_slots = intval(($end_t - $start_t)/$resolution) + 1;
-  $first_slot = $start_t;
-  
-  // If the last time slot is already occupied, we have a multiple
-  // booking in the last slot, so decrement the number of slots that
-  // we will display for this booking
-  if (isset($column[$time_end_t][1]["id"]))
-  {
-    $n_slots--;
-    // If we're only the second booking to land on this time slot
-    // then we'll have to adjust the information held for the first booking
-    // (unless it's just one slot long in the first place, when it 
-    // doesn't matter as it will now be part of a multiple booking).
-    // If we are the third booking or more, then it will have already
-    // been adjusted.
-    if (!isset($column[$time_end_t][2]["id"]))
-    {
-      if ($column[$time_end_t][0]["slots"] > 1)
-      {
-        // Move the name and description into the new first slot and decrement the number of slots
-        $column[date($format, $end_t + $resolution)][0]["data"] = $column[$time_end_t][0]["data"];
-        $column[date($format, $end_t + $resolution)][0]["long_descr"] = $column[$time_end_t][0]["long_descr"];
-        $column[date($format, $end_t + $resolution)][0]["slots"] = $column[$time_end_t][0]["slots"] - 1;
-      }
-    }
-  }
-  
-  // and if the first time slot is already occupied, decrement
-  // again, adjust the first slot for this booking
-  if (isset($column[$time_start_t][1]["id"]))
-  {
-    $n_slots--;
-    $first_slot += $resolution;
-    // If we're only the second booking to land on this time slot
-    // then we'll have to adjust the information held for the first booking
-    if (!isset($column[$time_start_t][2]["id"]))
-    {
-      // Find the first slot ($s) of the first booking
-      $first_booking_id = $column[$time_start_t][0]["id"];
-      $s = $start_t;
-      // If you've got to the first slot of the day then that must be the
-      // first slot of the first booking
-      while ($s > $am7)
-      {
-        // Otherwise, step back one slot.
-        $s -= $resolution;
-        // If that slot contains the first booking, then step back again
-        if (isset($column[date($format,$s)]))
-        {
-          foreach ($column[date($format,$s)] as $booking)
-          {
-            if ($booking["id"] == $first_booking_id)
-            {
-              continue 2;  // next iteration of the while loop
-            }
-          }
-        }
-        // If not, then we've stepped back one slot past the start of
-        // the first booking, so step forward again and finish
-        $s += $resolution;
-        break;
-      } // end while
-      
-      // Now we've found the time ($s) of the first slot of the first booking
-      // we need to find its index ($i)
-      foreach ($column[date($format,$s)] as $i => $booking)
-      {
-        if ($booking["id"] == $first_booking_id)
-        {
-          break;
-        }
-      }
-
-      // Finally decrement the slot count for the first booking
-      // no need to worry about count going < 1: the multiple booking display
-      // does not use the slot count.
-      $column[date($format,$s)][$i]["slots"]--;
-      // and put the name and description in the multiply booked slot
-      $column[$time_start_t][0]["data"] = $column[date($format,$s)][$i]["data"];
-      $column[$time_start_t][0]["long_descr"] = $column[date($format,$s)][$i]["long_descr"];
-
-    }
-  }
- 
-  // now we've got all the information we can enter it in the first complete
-  // slot for the booking (provided it's not a multiple booking slot)
-  if (!isset($column[date($format,$first_slot)][1]["id"]))
-  {
-    $column[date($format,$first_slot)][0]["data"] = $row['name'];
-    $column[date($format,$first_slot)][0]["long_descr"] = $row['entry_description'];
-    $column[date($format,$first_slot)][0]["slots"] = $n_slots;
-  }
-
-} // end function map_add_booking()
-
-
-
-function draw_cell($cell, $query_strings, $cell_class)
-{
-  // draws a single cell in the main table of the day and week views
-  //
-  // $cell is a two dimensional array that is part of the map of the whole
-  // display and looks like this:
-  // 
-  // $cell[n][id]
-  //         [is_repeat]
-  //         [color]
-  //         [data]
-  //         [long_descr]
-  //         [start_time]
-  //         [slots]
-  //         [status]
-  //
-  // where n is the number of the booking in the cell.    There can be none, one or many 
-  // bookings in a cell.    If there are no bookings then a blank cell is drawn with a link
-  // to the edit entry form.     If there is one booking, then the booking is shown in that
-  // cell.    If there is more than one booking then all the bookings are shown, but they can 
-  // be shown in two different ways: minimised and maximised.   By default they are shown
-  // minimised, so that the standard row height is preserved.   By clicking a control
-  // the cell can be maximised.   (Multiple bookings can arise in a cell if the resolution
-  // of an existing database in increased or the booking day is shifted).
-  
-  // $query_strings is an array containg the query strings (or partial query strings) to be
-  // appended to the link used for the cell.    It is indexed as follows:
-  //    ['new_periods']   the string to be used for an empty cell if using periods
-  //    ['new_times']     the string to be used for an empty cell if using times
-  //    ['booking']       the string to be used for a full cell
-  //
-  // $cell_class specifies the default class for the cell (odd_row, even_row or row_highlight)
-  // so that the zebra stripes can be drawn, or else to allow the whole row to be highlighted.
-  
-  global $main_cell_height, $main_table_cell_border_width;
-  global $area, $year, $month, $timetohighlight;
-  global $javascript_cursor, $enable_periods, $times_along_top;
-  global $approval_enabled, $confirmation_enabled;
-  
-  // if the time slot has got multiple bookings, then draw a mini-table
-  if(isset($cell[1]["id"]))
-  {
-    // Find out how many bookings there are (needed to calculate heights)
-    $n_bookings = 0;
-    while (isset($cell[$n_bookings]["id"]))
-    {
-      $n_bookings++;
-    }
-    
-    // Give the cell a unique id so that the JavaScript can use it
-    $td_id = uniqid('td', true);
-    
-    // Make the class maximized by default so that if you don't have JavaScript then
-    // you can still see all the bookings.    If you have JavaScript it will overwrite
-    // the class and make it minimized.
-    echo "<td class=\"multiple_booking maximized\" id=\"$td_id\">\n";
-    ?>
-    <script type="text/javascript">
-    //<![CDATA[
-      document.getElementById('<?php echo $td_id ?>').className = "multiple_booking minimized <?php echo $cell_class ?>";
-    //]]>
-    </script>
-    <?php
-    
-    // First draw the mini table
-    echo "<div class=\"celldiv slots1 mini\">\n";
-    echo "<div class=\"multiple_control\" onClick=\"document.getElementById('$td_id').className = 'multiple_booking maximized $cell_class'\">+</div>\n";
-    echo "<table>\n";
-    echo "<tbody>\n";
-    
-    $row_height = $main_cell_height - (($n_bookings-1) * $main_table_cell_border_width);   // subtract the borders (first row has no top border)
-    $row_height = $row_height/$n_bookings;  // split what's left between the bookings
-    $row_height = (int) ceil($row_height);  // round up, so that (a) there's no empty space at the bottom
-                                            // and (b) each stripe is at least 1 unit high
-    for ($n=0; $n<$n_bookings; $n++)
-    {
-      $id         = $cell[$n]["id"];
-      $is_repeat  = $cell[$n]["is_repeat"];
-      $status     = $cell[$n]["status"];
-      $color      = $cell[$n]["color"];
-      $descr      = htmlspecialchars($cell[$n]["data"]);
-      $long_descr = htmlspecialchars($cell[$n]["long_descr"]);
-      $class = $color;
-      if ($status & STATUS_PRIVATE)
-      {
-        $class .= " private";
-      }
-      if ($approval_enabled && ($status & STATUS_AWAITING_APPROVAL))
-      {
-        $class .= " awaiting_approval";
-      }
-      if ($confirmation_enabled && ($status & STATUS_TENTATIVE))
-      {
-        $class .= " tentative";
-      }
-      echo "<tr>\n";
-      echo "<td class=\"$class\"" .
-           (($n==0) ? " style=\"border-top-width: 0\"" : "") .   // no border for first row
-           ">\n";
-      echo "<div style=\"overflow: hidden; " .
-           "height: " . $row_height . "px; " .
-           "max-height: " . $row_height . "px; " .
-           "min-height: " . $row_height . "px\">\n";
-      echo "&nbsp;\n";
-      echo "</div>\n";
-      echo "</td>\n";
-      echo "</tr>\n";
-    }
-    echo "</tbody>\n";
-    echo "</table>\n";
-    echo "</div>\n";
-    
-    // Now draw the maxi table
-    echo "<div class=\"maxi\">\n";
-    $total_height = $n_bookings * $main_cell_height;
-    $total_height += ($n_bookings - 1) * $main_table_cell_border_width;  // (first row has no top border)
-    echo "<div class=\"multiple_control\" " .
-         "onClick=\"document.getElementById('$td_id').className = 'multiple_booking minimized $cell_class'\" " .
-         "style =\"height: " . $total_height . "px; " .
-                  "min-height: " . $total_height . "px; " .
-                  "max-height: " . $total_height . "px; " .
-         "\">-</div>\n";  
-    echo "<table>\n";
-    echo "<tbody>\n";
-    for ($n=0; $n<$n_bookings; $n++)
-    {
-      $id         = $cell[$n]["id"];
-      $is_repeat  = $cell[$n]["is_repeat"];
-      $status     = $cell[$n]["status"];
-      $color      = $cell[$n]["color"];
-      $descr      = htmlspecialchars($cell[$n]["start_time"] . " " . $cell[$n]["data"]);
-      $long_descr = htmlspecialchars($cell[$n]["long_descr"]);
-      $class = $color;
-      if ($status & STATUS_PRIVATE)
-      {
-        $class .= " private";
-      }
-      if ($approval_enabled && ($status & STATUS_AWAITING_APPROVAL))
-      {
-        $class .= " awaiting_approval";
-      }
-      if ($confirmation_enabled && ($status & STATUS_TENTATIVE))
-      {
-        $class .= " tentative";
-      }    
-      echo "<tr>\n";
-      echo "<td class=\"$class\"" .
-           (($n==0) ? " style=\"border-top-width: 0\"" : "") .   // no border for first row
-           ">\n";
-      echo "<div class=\"celldiv slots1\">\n";     // we want clipping of overflow
-      echo "<a href=\"view_entry.php?id=$id&amp;". $query_strings['booking'] . "\" title=\"$long_descr\">";
-      echo ($is_repeat) ? "<img class=\"repeat_symbol\" src=\"images/repeat.png\" alt=\"" . get_vocab("series") . "\" title=\"" . get_vocab("series") . "\" width=\"10\" height=\"10\">" : '';
-      echo "$descr</a>\n";
-      echo "</div>\n";
-     
-      echo "</td>\n";
-      echo "</tr>\n";
-    }
-    echo "</tbody>\n";
-    echo "</table>\n";
-    echo "</div>\n";
-    
-    echo "</td>\n";
-  }  // end of if isset ( ...[1]..)
-  
-  // otherwise draw a cell, showing either the booking or a blank cell
-  else
-  {  
-    if(isset($cell[0]["id"]))
-    {       
-      $id         = $cell[0]["id"];
-      $is_repeat  = $cell[0]["is_repeat"];
-      $status     = $cell[0]["status"];
-      $color      = $cell[0]["color"];
-      $descr      = htmlspecialchars($cell[0]["data"]);
-      $long_descr = htmlspecialchars($cell[0]["long_descr"]);
-      $slots      = $cell[0]["slots"];
-    }
-    else  // id not set
-    {
-      unset($id);
-      $slots = 1;
-    }
-
-    // $c is the colour of the cell that the browser sees. Zebra stripes normally,
-    // row_highlight if we're highlighting that line and the appropriate colour if
-    // it is booked (determined by the type).
-    // We tell if its booked by $id having something in it
-    if (isset($id))
-    {
-      $c = $color;
-      if ($status & STATUS_PRIVATE)
-      {
-        $c .= " private";
-      }
-      if ($approval_enabled && ($status & STATUS_AWAITING_APPROVAL))
-      {
-        $c .= " awaiting_approval";
-      }
-      if ($confirmation_enabled && ($status & STATUS_TENTATIVE))
-      {
-        $c .= " tentative";
-      } 
-    }
-    else
-    {
-      $c = $cell_class; // Use the default color class (zebra stripes or highlighting).
-    }
-    
-    // Don't put in a <td> cell if the slot is booked and there's no description.
-    // This would mean that it's the second or subsequent slot of a booking and so the
-    // <td> for the first slot would have had a rowspan that extended the cell down for
-    // the number of slots of the booking.
-
-    if (!(isset($id) && ($descr == ""))) 
-    {
-      tdcell($c, $slots);
-
-      // If the room isn't booked then allow it to be booked
-      if (!isset($id))
-      {
-        echo "<div class=\"celldiv slots1\">\n";  // a bookable slot is only one unit high
-
-        if ($javascript_cursor)
-        {
-          echo "<script type=\"text/javascript\">\n";
-          echo "//<![CDATA[\n";
-          echo "BeginActiveCell();\n";
-          echo "//]]>\n";
-          echo "</script>\n";
-        }
-        
-        if( $enable_periods )
-        {
-          echo "<a class=\"new_booking\" href=\"edit_entry.php?" . $query_strings['new_periods'] . "\">\n";
-          echo "<img src=\"images/new.gif\" alt=\"New\" width=\"10\" height=\"10\">\n";
-          echo "</a>\n";
-        }
-        else
-        {
-          echo "<a class=\"new_booking\" href=\"edit_entry.php?" . $query_strings['new_times'] . "\">\n";
-          echo "<img src=\"images/new.gif\" alt=\"New\" width=\"10\" height=\"10\">\n";
-          echo "</a>\n";
-        }
-        
-        if ($javascript_cursor)
-        {
-          echo "<script type=\"text/javascript\">\n";
-          echo "//<![CDATA[\n";
-          echo "EndActiveCell();\n";
-          echo "//]]>\n";
-          echo "</script>\n";
-        }
-        echo "</div>\n";
-      }
-      else                 // if it is booked then show the booking
-      {
-        if ($times_along_top)
-        {
-          echo "<div class=\"celldiv slots1\">\n";
-        }
-        else
-        {
-          echo "<div class=\"celldiv slots" . $slots . "\">\n";     // we want clipping of overflow
-        }
-        echo "<a href=\"view_entry.php?id=$id&amp;". $query_strings['booking'] . "\" title=\"$long_descr\">";
-        echo ($is_repeat) ? "<img class=\"repeat_symbol $c\" src=\"images/repeat.png\" alt=\"" . get_vocab("series") . "\" title=\"" . get_vocab("series") . "\" width=\"10\" height=\"10\">" : '';
-        echo "$descr</a>\n";
-        echo "</div>\n";
-      }
-      echo "</td>\n";
-    }
-  }
-}  // end function draw_cell
-
-
-// Draw a time cell to be used in the first and last columns of the day and week views
-//    $t                 the timestamp for the start of the slot
-//    $time_t            the time converted to HHMM format without leading zeros
-//    $time_t_stripped   a stripped version of the time for use with periods
-//    $hilite_url        the url to form the basis of the link in the time cell
-function draw_time_cell($t, $time_t, $time_t_stripped, $hilite_url)
-{
-  global $enable_periods, $periods;
-  
-  tdcell("row_labels", 1);
-  echo "<div class=\"celldiv slots1\">\n";
-  if ( $enable_periods )
-  {
-    
-    echo "<a href=\"$hilite_url=$time_t\"  title=\""
-      . get_vocab("highlight_line") . "\">"
-      . $periods[$time_t_stripped] . "</a>\n";
-  }
-  else
-  {
-    echo "<a href=\"$hilite_url=$time_t\" title=\""
-      . get_vocab("highlight_line") . "\">"
-      . utf8_strftime(hour_min_format(),$t) . "</a>\n";
-  }
-  echo "</div></td>\n";
-}
-
-// Draw a room cell to be used in the first and last columns of the day view
-//    $row     contains the room details; comes from an SQL query
-//    $link    the href to be used for the link
-function draw_room_cell($row, $link)
-{
-  tdcell("row_labels", 1);
-  echo "<div class=\"celldiv slots1\">\n";
-  echo "<a href=\"$link\" title=\"" . get_vocab("viewweek") . " &#10;&#10;" . $row['description'] . "\">";
-  echo htmlspecialchars($row['room_name']) . ($row['capacity'] > 0 ? "(".$row['capacity'].")" : "");
-  echo "</a>\n";
-  echo "</div></td>\n";
-}
-
-// Draw a day cell to be used in the first and last columns of the week view
-//    $text    contains the date, formatted as a string
-//    $link    the href to be used for the link
-function draw_day_cell($text, $link)
-{
-  tdcell("row_labels", 1);
-  echo "<div class=\"celldiv slots1\">\n";
-  echo "<a href=\"$link\" title=\"" . get_vocab("viewday") . "\">$text</a>\n";
-  echo "</div></td>\n";
-}
-
-
 // Generate a globally unique id
 //
 // We will generate a uid of the form "MRBS-uniqid-MD5hash@domain_name" 
@@ -1860,4 +1487,49 @@ function generate_global_uid($str)
   return $uid;
 }
 
+// Tests whether an array is associative
+//
+// Thanks to magentix at gmail dot com at http://php.net/manual/function.is-array.php
+function is_assoc($arr)
+{
+  return (is_array($arr) && count(array_filter(array_keys($arr),'is_string')) == count($arr));
+}
+
+
+// Checks whether we are running as a CLI module
+//
+// Based on code from mniewerth at ultimediaos dot com at 
+// http://php.net/manual/features.commandline.php
+function is_cgi()
+{
+  return (substr(PHP_SAPI, 0, 3) == 'cgi');
+}
+
+
+// Checks whether we are running from the CLI
+//
+// Based on code from mniewerth at ultimediaos dot com at 
+// http://php.net/manual/features.commandline.php
+function is_cli()
+{
+  global $allow_cli;
+  
+  if (!$allow_cli)
+  {
+    return FALSE;
+    
+  }
+  if (defined('STDIN'))
+  {
+    return TRUE;
+  }
+  elseif (is_cgi() && getenv('TERM'))
+  {
+    return TRUE;
+  }
+  else
+  {
+    return FALSE;
+  }
+}
 ?>

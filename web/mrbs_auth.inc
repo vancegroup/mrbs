@@ -2,11 +2,11 @@
 // $Id$
 
 // include the authentification wrappers
-require_once "auth_$auth[type].inc";
+require_once "auth/auth_$auth[type].inc";
 
 if (isset($auth['session']))
 {
-  require_once "session_$auth[session].inc";
+  require_once "session/session_$auth[session].inc";
 }
 
 // MINIMUM PAGE ACCESS LEVELS
@@ -28,16 +28,18 @@ $page_level['week.php']                  = ($auth['deny_public_access']) ? 1 : 0
 // made within the page to prevent ordinary users gaining access to admin features.
 $page_level['admin.php']                 = 1;  // Ordinary users can view room details 
 $page_level['approve_entry_handler.php'] = 1;  // Ordinary users are allowed to remind admins
-$page_level['del_entry.php']             = 1;  // Ordinary users can delete their own entries
+$page_level['del_entry.php']             = ($auth['only_admin_can_book']) ? 2 : 1;
 $page_level['edit_area_room.php']        = 1;  // Ordinary users can view room details
-$page_level['edit_entry.php']            = 1;  // Ordinary users can edit their own entries
-$page_level['edit_entry_handler.php']    = 1;  // Ordinary users can edit their own entries
+$page_level['edit_entry.php']            = ($auth['only_admin_can_book']) ? 2 : 1;
+$page_level['edit_entry_handler.php']    = ($auth['only_admin_can_book']) ? 2 : 1;
 $page_level['edit_users.php']            = 1;  // Ordinary users can edit their own details
 $page_level['pending.php']               = 1;  // Ordinary users can view their own entries
 
 // These pages have a minimum access level of 2 as they only contain admin features
 $page_level['add.php']                   = 2;
 $page_level['del.php']                   = 2;
+$page_level['del_entry_ajax.php']        = 2;
+$page_level['import.php']                = 2;
 
 
 /* getAuthorised($level)
@@ -52,8 +54,6 @@ $page_level['del.php']                   = 2;
  */
 function getAuthorised($level)
 {
-  global $auth;
-  
   // If the minimum level is zero (or not set) then they are
   // authorised, whoever they are
   if (empty($level))
@@ -69,11 +69,6 @@ function getAuthorised($level)
     return 0;
   }
 
-  if (isset($auth['only_admin_can_book']) && $auth['only_admin_can_book'])
-  {
-    $level = 2;
-  }
-
   return authGetUserLevel($user) >= $level;
 }
 
@@ -82,7 +77,7 @@ function getAuthorised($level)
  * Checks to see that a user is authorised to access the current page.
  * If they are not, then shows an Access Denied message and exits.
  *
- * Required page level authorisations are defined in systemdefaults/config
+ * Required page level authorisations are defined above.
  * If they are not defined then the function plays safe and requires the
  * highest level of authorisation.
  */

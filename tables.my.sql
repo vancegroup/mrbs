@@ -19,30 +19,42 @@
 
 CREATE TABLE mrbs_area
 (
-  id                     int NOT NULL auto_increment,
-  disabled               tinyint(1) DEFAULT 0 NOT NULL,
-  area_name              varchar(30) CHARACTER SET utf8 COLLATE utf8_general_ci,
-  area_admin_email       text CHARACTER SET utf8 COLLATE utf8_general_ci,
-  resolution             int,
-  default_duration       int,
-  morningstarts          int,
-  morningstarts_minutes  int,
-  eveningends            int,
-  eveningends_minutes    int,
-  private_enabled        tinyint(1),
-  private_default        tinyint(1),
-  private_mandatory      tinyint(1),
-  private_override       varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci,
-  min_book_ahead_enabled tinyint(1),
-  min_book_ahead_secs    int,
-  max_book_ahead_enabled tinyint(1),
-  max_book_ahead_secs    int,
-  custom_html            text CHARACTER SET utf8 COLLATE utf8_general_ci,
-  approval_enabled       tinyint(1),
-  reminders_enabled      tinyint(1),
-  enable_periods         tinyint(1),
-  confirmation_enabled   tinyint(1),
-  confirmed_default      tinyint(1),
+  id                        int NOT NULL auto_increment,
+  disabled                  tinyint(1) DEFAULT 0 NOT NULL,
+  area_name                 varchar(30) CHARACTER SET utf8 COLLATE utf8_general_ci,
+  timezone                  varchar(50) CHARACTER SET utf8 COLLATE utf8_general_ci,
+  area_admin_email          text CHARACTER SET utf8 COLLATE utf8_general_ci,
+  resolution                int,
+  default_duration          int,
+  default_duration_all_day  tinyint(1) DEFAULT 0 NOT NULL,
+  morningstarts             int,
+  morningstarts_minutes     int,
+  eveningends               int,
+  eveningends_minutes       int,
+  private_enabled           tinyint(1),
+  private_default           tinyint(1),
+  private_mandatory         tinyint(1),
+  private_override          varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci,
+  min_book_ahead_enabled    tinyint(1),
+  min_book_ahead_secs       int,
+  max_book_ahead_enabled    tinyint(1),
+  max_book_ahead_secs       int,
+  max_per_day_enabled       tinyint(1) DEFAULT 0 NOT NULL,
+  max_per_day               int DEFAULT 0 NOT NULL,
+  max_per_week_enabled      tinyint(1) DEFAULT 0 NOT NULL,
+  max_per_week              int DEFAULT 0 NOT NULL,
+  max_per_month_enabled     tinyint(1) DEFAULT 0 NOT NULL,
+  max_per_month             int DEFAULT 0 NOT NULL,
+  max_per_year_enabled      tinyint(1) DEFAULT 0 NOT NULL,
+  max_per_year              int DEFAULT 0 NOT NULL,
+  max_per_future_enabled    tinyint(1) DEFAULT 0 NOT NULL,
+  max_per_future            int DEFAULT 0 NOT NULL,
+  custom_html               text CHARACTER SET utf8 COLLATE utf8_general_ci,
+  approval_enabled          tinyint(1),
+  reminders_enabled         tinyint(1),
+  enable_periods            tinyint(1),
+  confirmation_enabled      tinyint(1),
+  confirmed_default         tinyint(1),
 
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -125,6 +137,17 @@ CREATE TABLE mrbs_variables
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE mrbs_zoneinfo
+(
+  id                 int NOT NULL auto_increment,
+  timezone           varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci DEFAULT '' NOT NULL,
+  outlook_compatible tinyint unsigned NOT NULL DEFAULT 0,
+  vtimezone          text CHARACTER SET utf8 COLLATE utf8_general_ci,
+  last_updated       int NOT NULL DEFAULT 0,
+      
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE mrbs_users
 (
   /* The first four fields are required. Don't remove. */
@@ -138,6 +161,6 @@ CREATE TABLE mrbs_users
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 INSERT INTO mrbs_variables (variable_name, variable_content)
-  VALUES ( 'db_version', '26');
+  VALUES ( 'db_version', '30');
 INSERT INTO mrbs_variables (variable_name, variable_content)
   VALUES ( 'local_db_version', '1');

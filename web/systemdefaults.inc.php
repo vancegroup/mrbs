@@ -5,17 +5,25 @@
 /**************************************************************************
  *   MRBS system defaults file
  *
- * DO _NOT_ MODIFY THIS FILE YOURSELF. IT FOR _INTERNAL_ USE ONLY.
+ * DO _NOT_ MODIFY THIS FILE YOURSELF. IT IS FOR _INTERNAL_ USE ONLY.
  *
  * TO CONFIGURE MRBS FOR YOUR SYSTEM ADD CONFIGURATION PARAMETERS FROM
  * THIS FILE INTO config.inc.php, DO _NOT_ EDIT THIS FILE.
  *
  **************************************************************************/
 
+/**********
+ * Timezone
+ **********/
+
 // The timezone your meeting rooms run in. It is especially important
 // to set this if you're using PHP 5 on Linux. In this configuration
 // if you don't, meetings in a different DST than you are currently
 // in are offset by the DST offset incorrectly.
+//
+// Note that timezones can be set on a per-area basis, so strictly speaking this
+// setting should be in areadefaults.inc.php, but as it is so important to set
+// the right timezone it is included here.
 //
 // When upgrading an existing installation, this should be set to the
 // timezone the web server runs in.  See the INSTALL document for more information.
@@ -23,6 +31,25 @@
 // A list of valid timezones can be found at http://php.net/manual/timezones.php
 // The following line must be uncommented by removing the '//' at the beginning
 //$timezone = "Europe/London";
+
+// If you are using iCalendar notifications of bookings (see the mail settings below)
+// then the iCalendar attachment includes a definition of your timezone in 
+// VTIMEZONE format.   This defines the timezone, including the rules for Daylight
+// Saving Time transitions.    This information is included in the MRBS distribution.
+// However, as governments can change the rules periodically, MRBS will check from
+// time to time to see if there is a later version available on the web.   If your
+// site prevents external access to the web, this check will time out.  However
+// you can avoid the timeout and stop MRBS checking for up to date versions by
+// setting $zoneinfo_update = FALSE;
+$zoneinfo_update = TRUE;
+
+// The VTIMEZONE definitions exist in two forms - normal and Outlook compatible.
+// $zoneinfo_outlook_compatible determines which ones to use.
+$zoneinfo_outlook_compatible = TRUE;
+
+// The VTIMEZONE definitions are cached in the database with an expiry time
+// of $zoneinfo_expiry seconds
+$zoneinfo_expiry = 60*60*24*28;    // 28 days
 
 /*******************
  * Database settings
@@ -123,10 +150,9 @@ $theme = "default";
 /*******************
  * Calendar settings
  *******************/
-
-// This setting controls whether to use "clock" or "times" based intervals
-// (FALSE and the default) or user defined periods (TRUE).   "Times" based
-// bookings allow you to define regular consecutive booking slots, eg every
+ 
+// MRBS has two different modes of operation: "times" and "periods".   "Times"
+// based bookings allow you to define regular consecutive booking slots, eg every
 // half an hour from 7.00 am to 7.00 pm.   "Periods" based bookings are useful
 // in, for example, schools where the booking slots are of different lengths
 // and are not consecutive because of change-over time or breaks.
@@ -135,67 +161,34 @@ $theme = "default";
 // been created and to have meaningful entries.  This is due to differences
 // in the way that the data is stored.
 
-// $enable_periods is settable on a per-area basis.
+// It is however possible to configure the system so that some areas operate in
+// "periods" mode and others in "times" mode.    Therefore the configuration variable
+// that determines the default setting for new areas appears together with other
+// variables that can be set on a per-area basis in the file areadefaults.inc.php.
+// This is done to draw attention to the fact that they are default settings for new
+// areas only and to avoid frustration when trying to change settings for existing
+// areas: this is done by editing the settings for an area using a web browser by
+// following the "Rooms" link in MRBS.
 
-$enable_periods = FALSE;  // Default value for new areas
+
+// GENERAL SETTINGS
+// ----------------
+
+// This is the maximum number of rows (timeslots or periods) that one can
+// expect to see in the day and week views.    It is used by mrbs.css.php for
+// creating classes.    It does not matter if it is too large, except for the
+// fact that more CSS than necessary will be generated.  (The variable is ignored
+// if $times_along_top is set to TRUE).
+
+$max_slots = 60;
 
 
 // TIMES SETTINGS
 // --------------
 
-// These settings are all set per area through MRBS.   These are the default
-// settings that are used when a new area is created.
+// The times settings can all be configured on a per-area basis, so these variables
+// appear in the areadefaults.inc.php file.
 
-// The "Times" settings are ignored if $enable_periods is TRUE.
-
-// Note: Be careful to avoid specifying options that display blocks overlapping
-// the next day, since it is not properly handled.
-
-// Resolution - what blocks can be booked, in seconds.
-// Default is half an hour: 1800 seconds.
-$resolution = (30 * 60);  // DEFAULT VALUE FOR NEW AREAS
-
-// If the following variable is set to TRUE, the resolution of bookings
-// is forced to be the value of $resolution, rather than the resolution set
-// for the area in the database.
-$force_resolution = FALSE;
-
-// Default duration - default length (in seconds) of a booking.
-// Defaults to (60 * 60) seconds, i.e. an hour
-$default_duration = (60 * 60);  // DEFAULT VALUE FOR NEW AREAS
-
-// Start and end of day.
-// NOTE:  The time between the beginning of the last and first
-// slots of the day must be an integral multiple of the resolution,
-// and obviously >=0.
-
-
-// The default settings below (along with the 30 minute resolution above)
-// give you 24 half-hourly slots starting at 07:00, with the last slot
-// being 18:30 -> 19:00
-
-// The beginning of the first slot of the day (DEFAULT VALUES FOR NEW AREAS)
-$morningstarts         = 7;   // must be integer in range 0-23
-$morningstarts_minutes = 0;   // must be integer in range 0-59
-
-// The beginning of the last slot of the day (DEFAULT VALUES FOR NEW AREAS)
-$eveningends           = 18;  // must be integer in range 0-23
-$eveningends_minutes   = 30;   // must be integer in range 0-59
-
-// Example 1.
-// If resolution=3600 (1 hour), morningstarts = 8 and morningstarts_minutes = 30 
-// then for the last period to start at say 4:30pm you would need to set eveningends = 16
-// and eveningends_minutes = 30
-
-// Example 2.
-// To get a full 24 hour display with 15-minute steps, set morningstarts=0; eveningends=23;
-// eveningends_minutes=45; and resolution=900.
-
-// This is the maximum number of rows (timeslots or periods) that one can expect to see in the day
-// and week views.    It is used by mrbs.css.php for creating classes.    It does not matter if it
-// is too large, except for the fact that more CSS than necessary will be generated.  (The variable
-// is ignored if $times_along_top is set to TRUE).
-$max_slots = 60;
 
 
 // PERIODS SETTINGS
@@ -235,38 +228,44 @@ $periods[] = "Period&nbsp;2";
  * Booking policies
  ******************/
 
-// If the variables below are set to TRUE, MRBS will force a minimum and/or maximum advance
-// booking time on ordinary users (admins can make bookings for whenever they like).   The
-// minimum advance booking time allows you to set a policy saying that users must book
-// at least so far in advance.  The maximum allows you to set a policy saying that they cannot
-// book more than so far in advance.  How the times are determined depends on whether Periods
-// or Times are being used.   These settings also apply to the deletion of bookings.
+// Most booking policies can be configured on a per-area basis, so these variables
+// appear in the areadefaults.inc.php file.
 
-// DEFAULT VALUES FOR NEW AREAS
-$min_book_ahead_enabled = FALSE;    // set to TRUE to enforce a minimum advance booking time
-$max_book_ahead_enabled = FALSE;    // set to TRUE to enforce a maximum advance booking time
+// The settings below are global policy settings
 
-// The advance booking limits are measured in seconds and are set by the two variables below.
-// The relevant time for determining whether a booking is allowed is the start time of the
-// booking.  Values may be negative: for example setting $min_book_ahead_secs = -300 means
-// that users cannot book more than 5 minutes in the past.
+// Set a maximum duration for bookings
+$max_duration_enabled = FALSE; // Set to TRUE if you want to enforce a maximum duration
+$max_duration_secs = 60*60*2;  // (seconds) - when using "times"
+$max_duration_periods = 2;     // (periods) - when using "periods"
 
-// DEFAULT VALUES FOR NEW AREAS
-$min_book_ahead_secs = 0;           // (seconds) cannot book in the past
-$max_book_ahead_secs = 60*60*24*7;  // (seconds) no more than one week ahead
+// Set the maximum number of bookings that can be made by any one user, in an interval,
+// which can be a day, week, month or year, or else in the future.  (A week is defined
+// by the $weekstarts setting).   These are global settings, but you can additionally
+// configure per area settings.   This would allow you to set policies such as allowing
+// a maximum of 10 bookings per month in total with a maximum of 1 per day in Area A.
+$max_per_interval_global_enabled['day']    = FALSE;
+$max_per_interval_global['day'] = 1;      // max 1 bookings per day in total
 
-// NOTE:  If you are using periods, MRBS has no notion of when the periods occur during the
-// day, and so cannot impose policies of the kind "users must book at least one period
-// in advance".    However it can impose policies such as "users must book at least
-// one day in advance".   The two values above are rounded down to the nearest whole 
-// number of days when using periods.   For example 86401 will be rounded down to 86400
-// (one day) and 1 will be rounded down to 0.
-//
-// As MRBS does not know when the periods occur in the day, there is no way of specifying, for example,
-// that bookings must be made at least 24 hours in advance.    Setting $min_book_ahead_secs=86400
-// will allow somebody to make a booking at 11:59 pm for the first period the next day, which
-// which may occur at 8.00 am.
+$max_per_interval_global_enabled['week']   = FALSE;
+$max_per_interval_global['week'] = 5;     // max 5 bookings per week in total
 
+$max_per_interval_global_enabled['month']  = FALSE;
+$max_per_interval_global['month'] = 10;   // max 10 bookings per month in total
+
+$max_per_interval_global_enabled['year']   = FALSE;
+$max_per_interval_global['year'] = 50;    // max 50 bookings per year in total
+
+$max_per_interval_global_enabled['future'] = FALSE;
+$max_per_interval_global['future'] = 100; // max 100 bookings in the future in total
+
+// Set the latest date for which you can make a booking.    This can be useful if you
+// want to set an absolute date, eg the end of term, beyond which bookings cannot be made.
+// If you want to set a relative date, eg no more than a week away, then this can be done
+// using the area settings.   Note that it is possible to have both a relative and absolute
+// date, eg "no more than a week away and in any casae not past the end of term".
+// Note that bookings are allowed on the $max_booking_date, but not after it.
+$max_booking_date_enabled = FALSE;
+$max_booking_date = "2012-07-23";  // Must be a string in the format "yyyy-mm-dd"
 
 /******************
  * Display settings
@@ -298,6 +297,10 @@ $dateformat = 0;
 // in 24 hour format
 $twentyfourhour_format = 1;
 
+// The number of years back and ahead the date selectors should go
+$year_range['back'] = 5;
+$year_range['ahead'] = 5;
+
 // Formats used for dates and times.   For formatting options
 // see http://php.net/manual/function.strftime.php
 $strftime_format['date']         = "%A %d %B %Y";  // Used in Day view
@@ -327,6 +330,10 @@ $search["count"] = 20;
 // Page refresh time (in seconds). Set to 0 to disable
 $refresh_rate = 0;
 
+// Refresh rate (in seconds) for Ajax checking of valid bookings on the edit_entry page
+// Set to 0 to disable
+$ajax_refresh_rate = 10;
+
 // Trailer type.   FALSE gives a trailer complete with links to days, weeks and months before
 // and after the current date.    TRUE gives a simpler trailer that just has links to the
 // current day, week and month.
@@ -342,8 +349,9 @@ $area_list_format = "list";
 // of 12.
 $monthly_view_entries_details = "both";
 
-// To view weeks in the bottom (trailer.inc) as week numbers (42) instead of
-// 'first day of the week' (13 Oct), set this to TRUE
+// To view weeks in the bottom trailer as week numbers (42) instead of
+// 'first day of the week' (13 Oct), set this to TRUE.  Will also give week
+// numbers in the month view
 $view_week_number = FALSE;
 
 // To display week numbers in the mini-calendars, set this to true. The week
@@ -365,6 +373,10 @@ $row_labels_both_sides = FALSE;
 // To display the column headers (times, rooms or days) on the bottom of the table as
 // well as the top in the day and week views, set to TRUE;
 $column_labels_both_ends = FALSE;
+
+// To display the mini caldandars at the bottom of the day week and month views
+// set this value to TRUE
+$display_calendar_bottom = FALSE; 
 
 // Define default starting view (month, week or day)
 // Default is day
@@ -400,7 +412,18 @@ $max_content_length = 20;  // characters
 // The maximum length of a database field for which a text input can be used on a form
 // (eg when editing a user or room).  If longer than this a text area will be used.
 $text_input_max = 70;  // characters
-                                
+
+// For inputs that have autocomplete options, eg the area and room match inputs on
+// the report page, we can define how many characters need to be input before the 
+// options are displayed.  This enables us to prevent a huge long list of options
+// being presented.   We define the breakpoints in an array.   For example if we set
+// $autocomplete_length_breaks = array(25, 250, 2500); this means that if the number of options
+// is less than 25 then they will be displayed when 0 characters are input, ie the input
+// receives focus.   If the number of options is less than 250 then they will be displayed
+// when 1 character is input and so on.    The array can be as long as you like.   If it
+// is empty then the options are displayed when 0 characters are input.
+$autocomplete_length_breaks = array(25, 250, 2500);
+
 
 /************************
  * Miscellaneous settings
@@ -412,55 +435,14 @@ $max_rep_entrys = 365 + 1;
 // Default report span in days:
 $default_report_days = 60;
 
-// Control the active cursor in day/week/month views.   By default, highlighting
-// is implemented using the CSS :hover pseudo-class.    For old browers such as
-// IE6, this is not supported and MRBS will automatically switch over to use 
-// JavaScript highlighting - for which there are three different modes: 'bgcolor',
-// 'class' and 'hybrid'.  If clients have VERY old browsers, then you may even want
-// to disable the JavaScript highlighting by setting $javascript_cursor to false.
-$javascript_cursor = TRUE; // Change to FALSE if clients have very old browsers
-                           // incompatible with JavaScript.
 $show_plus_link = FALSE;   // Change to TRUE to always show the (+) link as in
                            // MRBS 1.1.
-$highlight_method = "hybrid"; // One of "bgcolor", "class", "hybrid".   "hybrid" is recommended as it is
-                              // faster in old browsers such as IE6 - which is the only time that
-                              // JavaScript highlighting is used anyway.    The rest of the time CSS
-                              // highlighting is used, whether or not $javascript_cursor is set.
 
 
 // PRIVATE BOOKINGS SETTINGS
 
-// These settings are all set per area through MRBS.   These are the default
-// settings that are used when a new area is created.
-
-// Only administrators or the person who booked a private event can see
-// details of the event.  Everyone else just sees that the time/period
-// is booked on the schedule.
-
-$private_enabled = FALSE;  // DEFAULT VALUE FOR NEW AREAS
-           // Display checkbox in entry page to make
-           // the booking private.
-
-$private_mandatory = FALSE;  // DEFAULT VALUE FOR NEW AREAS
-           // If TRUE all new/edited entries will 
-           // use the value from $private_default when saved.
-           // If checkbox is displayed it will be disabled.
-           
-$private_default = FALSE;  // DEFAULT VALUE FOR NEW AREAS
-           // Set default value for "Private" flag on new/edited entries.
-           // Used if the $private_enabled checkbox is displayed
-           // or if $private_mandatory is set.
-
-$private_override = "none";  // DEFAULT VALUE FOR NEW AREAS
-           // Override default privacy behavior. 
-           // "none" - Private flag on entry is used
-           // "private" - ALL entries are treated as private regardless
-           //             of private flag on the entry.
-           // "public" - NO entry is treated as private, regardless of
-           //            private flag on the entry.
-           // Overrides $private_default and $private_mandatory
-           // Consider your users' expectations of privacy before
-           // changing to "public" or from "private" to "none"
+// Note:  some settings for private bookings can be set on a per-area basis and
+// so appear in the areadefaults.inc.php file
 
 // Choose which fields should be private by setting 
 // $is_private_field['tablename.columnname'] = TRUE
@@ -475,15 +457,9 @@ $is_private_field['entry.create_by'] = TRUE;
                   
 // SETTINGS FOR APPROVING BOOKINGS - PER-AREA
 
-// These settings control whether bookings made by ordinary users need to be
-// approved by an admin.   The settings here are the default settings for new
-// areas.  The settings for individual areas can be changed from within MRBS.
+// These settings can all be be configured on a per-area basis, so these variables
+// appear in the areadefaults.inc.php file.
 
-$approval_enabled = FALSE;  // Set to TRUE to enable booking approval
-
-// Set to FALSE if you don't want users to be able to send reminders
-// to admins when bookings are still awaiting approval.
-$reminders_enabled = TRUE;
 
 // SETTINGS FOR APPROVING BOOKINGS - GLOBAL
 
@@ -496,22 +472,18 @@ $reminder_interval = 60*60*24*2;  // 2 working days
 // Days of the week that are working days (Sunday = 0, etc.)
 $working_days = array(1,2,3,4,5);  // Mon-Fri
 
+
 // SETTINGS FOR BOOKING CONFIRMATION
 
-// Allows bookings to be marked as "tentative", ie not yet 100% certain,
-// and confirmed later.   Useful if you want to reserve a slot but at the same
-// time let other people know that there's a possibility it may not be needed.
-$confirmation_enabled = TRUE;
+// These settings can all be be configured on a per-area basis, so these variables
+// appear in the areadefaults.inc.php file.
 
-// The default confirmation status for new bookings.  (TRUE: confirmed, FALSE: tentative)
-// Only used if $confirmation_enabled is TRUE.   If $confirmation_enabled is 
-// FALSE, then all new bookings are confirmed automatically.
-$confirmed_default = TRUE;
 
 /***********************************************
  * Form values
  ***********************************************/
 
+ $select_options  = array();
 // It is possible to constrain some form values to be selected from a drop-
 // down select box, rather than allowing free form input.   This is done by
 // putting the permitted options in an array as part of the $select_options
@@ -521,17 +493,59 @@ $confirmed_default = TRUE;
 
 //$select_options['entry.name'] = array('Physics', 'Chemistry', 'Biology');
 
-// At the moment this feature is only supported as follows:
+// At the moment $select_options is only supported as follows:
 //     - Entry table: name, description and custom fields
 //     - Users table: custom fields
 
+// For custom fields only (will be extended later) it is also possible to use
+// an associative array for $select_options, for example
+
+//$select_options['entry.catering'] = array('c' => 'Coffee', 
+//                                          's' => 'Sandwiches',
+//                                          'h' => 'Hot Lunch');
+
+// In this case the key (eg 'c') is stored in the database, but the value
+// (eg 'Coffee') is displayed and can be searched for using Search and Report.
+// This allows you to alter the displayed values, for example changing 'Coffee'
+// to 'Coffee, Tea and Biscuits', without having to alter the database.   It can also
+// be useful if the database table is being shared with another application.
+// MRBS will auto-detect whether the array is associative.
+//
+// If you want to make the select field a mandatory field (see below) then include
+// an empty string as one of the values, eg
+//
+//$select_options['entry.catering'] = array(''  => 'Please select one option',
+//                                          'c' => 'Coffee', 
+//                                          's' => 'Sandwiches',
+//                                          'h' => 'Hot Lunch');
+
 $is_mandatory_field = array();
 // You can define custom entry fields to be mandatory by setting
-// items in the array $is_mandatory_field. For example:
+// items in the array $is_mandatory_field.   (Note that making a checkbox
+// field mandatory means that the box must be checked.)   For example:
 
-// $is_mandatory_field['entry.coffee_required'] = true;
+// $is_mandatory_field['entry.terms_and_conditions'] = true;
 
- 
+// Set $skip_default to TRUE if you want the "Skip past conflicts" box
+// on the edit_entry form to be checked by default.  (This will mean that
+// if you make a repeat booking and some of the repeat dates are already
+// booked, MRBS will just skip past those).
+$skip_default = FALSE;
+
+// $edit_entry_field_order can be used to change the order of fields in the 
+// edit_entry page. This is useful to insert custom fields somewhere other than 
+// the end. For example: To place a custom field 'in_charge' directly after the 
+// booking name, set the following in config.inc.php:
+// 
+// $edit_entry_field_order = array('name', 'in_charge');
+// 
+// Valid entries in this array are: 'name', 'description', 'start_date', 
+// 'end_date', 'areas', 'rooms', 'type', 'confirmation_status', 
+// 'privacy_status', plus any custom fields you may have defined. Fields that 
+// are not mentionend in the array are appended at the end, in their usual 
+// order.
+$edit_entry_field_order = array();
+
 /***********************************************
  * Authentication settings - read AUTHENTICATION
  ***********************************************/
@@ -611,6 +625,8 @@ $auth["params"] = "";
 // different levels of admin
 $max_level = 2;
 // The lowest level of admin allowed to edit other users
+$min_user_viewing_level = 2;
+// The lowest level of admin allowed to edit other users
 $min_user_editing_level = 2;
 
 // Password policy.  Uncomment the variables and set them to the
@@ -639,43 +655,81 @@ $auth['db_ext']['column_name_password'] = 'password';
 $auth['db_ext']['password_format'] = 'md5';
 
 // 'auth_ldap' configuration settings
-// Where is the LDAP server
+
+// Many of the LDAP parameters can be specified as arrays, in order to
+// specify multiple LDAP directories to search within. Each item below
+// will specify whether the item can be specified as an array. If any
+// parameter is specified as an array, then EVERY array configuration
+// parameter must have the same number of elements. You can specify a
+// parameter as an array as in the following example:
+//
+// $ldap_host = array('localhost', 'otherhost.example.com');
+
+// Where is the LDAP server.
+// This can be an array.
 //$ldap_host = "localhost";
-// If you have a non-standard LDAP port, you can define it here
+
+// If you have a non-standard LDAP port, you can define it here.
+// This can be an array.
 //$ldap_port = 389;
-// If you do not want to use LDAP v3, change the following to false
+
+// If you do not want to use LDAP v3, change the following to false.
+// This can be an array.
 $ldap_v3 = true;
-// If you want to use TLS, change the following to true
+
+// If you want to use TLS, change the following to true.
+// This can be an array.
 $ldap_tls = false;
-// LDAP base distinguish name
-// See AUTHENTICATION for details of how check against multiple base dn's
+
+// LDAP base distinguish name.
+// This can be an array.
 //$ldap_base_dn = "ou=organizationalunit,dc=my-domain,dc=com";
+
 // Attribute within the base dn that contains the username
+// This can be an array.
 //$ldap_user_attrib = "uid";
+
 // If you need to search the directory to find the user's DN to bind
 // with, set the following to the attribute that holds the user's
 // "username". In Microsoft AD directories this is "sAMAccountName"
+// This can be an array.
 //$ldap_dn_search_attrib = "sAMAccountName";
+
 // If you need to bind as a particular user to do the search described
 // above, specify the DN and password in the variables below
+// These two parameters can be arrays.
 // $ldap_dn_search_dn = "cn=Search User,ou=Users,dc=some,dc=company";
 // $ldap_dn_search_password = "some-password";
 
 // 'auth_ldap' extra configuration for ldap configuration of who can use
 // the system
-// If it's set, the $ldap_filter will be combined with the value of
-// $ldap_user_attrib like this:
-//   (&($ldap_user_attrib=username)($ldap_filter))
-// After binding to check the password, this check is used to see that
-// they are a valid user of mrbs.
-//$ldap_filter = "mrbsuser=y";
+// If it's set, the $ldap_filter will be used to determine whether a
+// user will be granted access to MRBS
+// This can be an array.
+// An example for Microsoft AD:
+//$ldap_filter = "memberof=cn=whater,ou=whatver,dc=example,dc=com";
+
+// If you need to disable client referrals, this should be set to TRUE.
+// Note: Active Directory for Windows 2003 forward requires this.
+// $ldap_disable_referrals = TRUE;
 
 // Set to TRUE to tell MRBS to look up a user's email address in LDAP.
 // Utilises $ldap_email_attrib below
 $ldap_get_user_email = FALSE;
 // The LDAP attribute which holds a user's email address
+// This can be an array.
 $ldap_email_attrib = 'mail';
 
+// The DN of the LDAP group that MRBS admins must be in. If this is defined
+// then the $auth["admin"] is not used.
+// This can be an array.
+// $ldap_admin_group_dn = 'cn=admins,ou=whoever,dc=example,dc=com';
+
+// The LDAP attribute that holds group membership details. Used with
+// $ldap_admin_group_dn, above.
+// This can be an array.
+$ldap_group_member_attrib = 'memberof';
+  
 // Set to TRUE if you want MRBS to call ldap_unbind() between successive
 // attempts to bind. Unbinding while still connected upsets some
 // LDAP servers
@@ -714,8 +768,8 @@ $pop3_port = "110";
 $auth['smtp']['server'] = 'myserver.example.org';
 
 // General settings
-// If you want only administrators to be able to book slots, set this
-// variable to TRUE
+// If you want only administrators to be able to make and delete bookings,
+// set this variable to TRUE
 $auth['only_admin_can_book'] = FALSE;
 // If you want only administrators to be able to make repeat bookings,
 // set this variable to TRUE
@@ -733,6 +787,15 @@ $auth['only_admin_can_see_other_users'] = FALSE;
 // If you want to prevent the public (ie un-logged in users) from
 // being able to view bookings, set this variable to TRUE
 $auth['deny_public_access'] = FALSE;
+// Set to TRUE if you want admins to be able to perform bulk deletions
+// on the Report page.  (It also only shows up if JavaScript is enabled)
+$auth['show_bulk_delete'] = FALSE;
+
+// Set to TRUE if you want to allow MRBS to be run from the command line, for example
+// if you want to produce reports from a cron job.   (It is set to FALSE by default
+// as a security measure, because when running from the CLI you are assumed to have
+// full admin access).
+$allow_cli = FALSE;
 
 
 /**********************************************
@@ -786,12 +849,8 @@ $mail_settings['icalendar'] = FALSE; // Set to TRUE to include iCalendar details
                                      // periods and time of day, so the calendar would not
                                      // be able to import the booking)
 
-// HOW TO EMAIL - CHARACTER SET AND LANGUAGE
+// HOW TO EMAIL - LANGUAGE
 // -----------------------------------------
-// You can override the charset used in emails if you like, but be sure
-// the charset you choose can handle all the characters in the translation
-// and that anyone may use in a booking description
-//$mail_charset = "iso-8859-1";
 
 // Set the language used for emails (choose an available lang.* file).
 $mail_settings['admin_lang'] = 'en';   // Default is 'en'.
@@ -817,7 +876,7 @@ $mail_settings['username_suffix'] = '';
 // HOW TO EMAIL - BACKEND
 // ----------------------
 // Set the name of the backend used to transport your mails. Either 'mail',
-// 'smtp' or 'sendmail'. Default is 'mail'. See INSTALL for more details.
+// 'smtp' or 'sendmail'. Default is 'mail'.
 $mail_settings['admin_backend'] = 'mail';
 
 /*******************
@@ -866,8 +925,17 @@ $mail_settings['treat_cc_as_to'] = FALSE;
 // extension '.ics'
 $mail_settings['ics_filename'] = "booking";
 
-
-
+// Set this to TRUE if you want MRBS to output debug information to the browser
+// when you are sending email.   If you are not getting emails it can be helpful
+// by telling you (a) whether the mail functions are being called in the first place
+//(b) whether there are addresses to send email to and (c) the result of the mail
+// sending operation.
+$mail_settings['debug'] = FALSE;
+// Set this to TRUE if you do not want any email sent, whatever the rest of the settings.
+// This is a global setting that will override anything else.   Useful when testing MRBS.
+$mail_settings['disabled'] = FALSE;
+ 
+ 
 /**********
  * Language
  **********/
@@ -897,52 +965,76 @@ $override_locale = "";
 // use "_fr"
 $faqfilelang = ""; 
 
+// Language selection when run from the command line
+$cli_language = "en";
+
+// Vocab overrides
+// ---------------
+
+// You can override the text strings that appear in the lang.* files by setting
+// $vocab_override[LANG][TOKEN] in your config file, where LANG is the language,
+// for example 'en' and TOKEN is the key of the $vocab array.  For example to
+// alter the string "Meeting Room Booking System" in English set
+//
+// $vocab_override['en']['mrbs'] = "My Resource Booking System";
+//
+// Applying vocab overrides in the config file rather than editing the lang files
+// mean that your changes will be preserved whenb you upgrade to the next version of
+// and you won't have to re-edit the lang file.
 
 /*************
  * Reports
  *************/
  
-// Default CSV file names
-$report_filename  = "report.csv";
-$summary_filename = "summary.csv";
+// Default file names
+$report_filename  = "report";
+$summary_filename = "summary";
 
 // CSV format
+// By default Excel expects a tab as the column separator, so if you are opening
+// CSV files with Excel you may want to change $csv_col_sep to be '\t'
 $csv_row_sep = "\n";  // Separator between rows/records
 $csv_col_sep = ",";   // Separator between columns/fields
+
+// CSV charset
+// Set the character set to be used for CSV files.   If $csv_charset is not set
+// then CSV files are written using the MRBS default charset (utf-8).  However
+// Microsoft Excel (at least up to Excel 2010 on Windows and 2011 on Mac) is not
+// guaranteed to recognise utf-8, but does recognise utf-16, so the default setting
+// for $csv_charset is 'utf-16'. Setting $csv_charset to 'utf-8' and $csv_bom
+// to TRUE (ie requiring MRBS to output a Byte Order Mark) will make Excel
+// 2010 on Windows, and maybe earlier versions, work. 
+// But utf-8 with, or without, a BOM will not work on Excel 2011 for Mac.
+$csv_charset = 'utf-16';
+$csv_bom = TRUE;
 
 
 /*************
  * Entry Types
  *************/
 
-// This array maps entry type codes (letters A through J) into descriptions.
+// This array lists the configured entry type codes. The values map to a
+// single char in the MRBS database, and so can be any permitted PHP array
+// character.
 //
-// This is a basic default array which ensures there are at least some types defined.
-// The proper type definitions should be made in config.inc.php:  they have to go there
-// because they use get_vocab which requires language.inc which uses settings which might
-// be made in config.inc.php.
+// The default descriptions of the entry types are held in the language files
+// as "type.X" where 'X' is the entry type.  If you want to change the description
+// you can override the default descriptions by setting the $vocab_override config
+// variable.   For example, if you add a new booking type 'C' the minimum you need
+// to do is add a line to config.inc.php like:
+// 
+// $vocab_override["en"]["type.C"] =     "New booking type";
+//
+// Below is a basic default array which ensures there are at least some types defined.
+// The proper type definitions should be made in config.inc.php.
 //
 // Each type has a color which is defined in the array $color_types in the Themes
 // directory - just edit whichever include file corresponds to the theme you
 // have chosen in the config settings. (The default is default.inc, unsurprisingly!)
 //
-// The value for each type is a short (one word is best) description of the
-// type. The values must be escaped for HTML output ("R&amp;D").
-// Please leave I and E alone for compatibility.
-// If a type's entry is unset or empty, that type is not defined; it will not
-// be shown in the day view color-key, and not offered in the type selector
-// for new or edited entries.
 
-// $typel["A"] = "A";
-// $typel["B"] = "B";
-// $typel["C"] = "C";
-// $typel["D"] = "D";
-$typel["E"] = "E";
-// $typel["F"] = "F";
-// $typel["G"] = "G";
-// $typel["H"] = "H";
-$typel["I"] = "I";
-// $typel["J"] = "J";
+$booking_types[] = "E";
+$booking_types[] = "I";
 
 // Default type for new bookings
 $default_type = "I";

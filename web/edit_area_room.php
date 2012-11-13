@@ -31,19 +31,102 @@
 // in MySQL.
 //
 // You can put a description of the column that will be used as the label in
-// the form in the appropriate lang file(s) using the tag 'room.[columnname]'.
+// the form in the $vocab_override variable in the config file using the tag
+// 'room.[columnname]'.
+//
 // For example if you want to add a column specifying whether or not a room
 // has a coffee machine you could add a column to the room table called
 // 'coffee_machine' of type tinyint(1), in MySQL, or smallint in PostgreSQL.
-// Then in the appropriate lang file(s) you would add the line
+// Then in the config file you would add the line
 //
-// vocab["room.coffee_machine"] = "Coffee machine";  // or appropriate translation
+// $vocab_override['en']['room.coffee_machine'] = "Coffee machine";  // or appropriate translation
 //
-// If MRBS can't find an entry for the field in the lang file, then it will use
-// the fieldname, eg 'coffee_machine'.
+// If MRBS can't find an entry for the field in the lang file or vocab overrides, then
+// it will use the fieldname, eg 'coffee_machine'.
 
-require_once "defaultincludes.inc";
+require "defaultincludes.inc";
 require_once "mrbs_sql.inc";
+
+
+function create_field_entry_timezone()
+{
+  global $timezone, $zoneinfo_outlook_compatible;
+  
+  $special_group = "Others";
+  
+  echo "<div>\n";
+  echo "<label for=\"area_timezone\">" . get_vocab("timezone") . ":</label>\n";
+
+  // If possible we'll present a list of timezones that this server supports and
+  // which also have a corresponding VTIMEZONE definition.
+  // Otherwise we'll just have to let the user type in a timezone, which introduces
+  // the possibility of an invalid timezone.
+  if (function_exists('timezone_identifiers_list'))
+  {
+    $timezones = array();
+    $timezone_identifiers = timezone_identifiers_list();
+    foreach ($timezone_identifiers as $value)
+    {
+      if (strpos($value, '/') === FALSE)
+      {
+        // There are some timezone identifiers (eg 'UTC') on some operating
+        // systems that don't fit the Continent/City model.   We'll put them
+        // into the special group
+        $continent = $special_group;
+        $city = $value;
+      }
+      else
+      {
+        // Note: timezone identifiers can have three components, eg
+        // America/Argentina/Tucuman.    To keep things simple we will
+        // treat anything after the first '/' as a single city and
+        // limit the explosion to two
+        list($continent, $city) = explode('/', $value, 2);
+      }
+      // Check that there's a VTIMEZONE definition
+      $tz_dir = ($zoneinfo_outlook_compatible) ? TZDIR_OUTLOOK : TZDIR;  
+      $tz_file = "$tz_dir/$value.ics";
+      // UTC is a special case because we can always produce UTC times in iCalendar
+      if (($city=='UTC') || file_exists($tz_file))
+      {
+        $timezones[$continent][] = $city;
+      }
+    }
+    
+    echo "<select id=\"area_timezone\" name=\"area_timezone\">\n";
+    foreach ($timezones as $continent => $cities)
+    {
+      if (count($cities) > 0)
+      {
+        echo "<optgroup label=\"" . htmlspecialchars($continent) . "\">\n";
+        foreach ($cities as $city)
+        {
+          if ($continent == $special_group)
+          {
+            $timezone_identifier = $city;
+          }
+          else
+          {
+            $timezone_identifier = "$continent/$city";
+          }
+          echo "<option value=\"" . htmlspecialchars($timezone_identifier) . "\"" .
+               (($timezone_identifier == $timezone) ? " selected=\"selected\"" : "") .
+               ">" . htmlspecialchars($city) . "</option>\n";
+        }
+        echo "</optgroup>\n";
+      }
+    }
+    echo "</select>\n";
+  }
+  // There is no timezone_identifiers_list() function so we'll just let the
+  // user type in a timezone
+  else
+  {
+    echo "<input id=\"area_timezone\" name=\"area_timezone\" value=\"" . htmlspecialchars($timezone) . "\">\n";
+  }
+  
+  echo "</div>\n";
+}
 
 // Get non-standard form variables
 $phase = get_form_var('phase', 'int');
@@ -58,12 +141,14 @@ $description = get_form_var('description', 'string');
 $capacity = get_form_var('capacity', 'int');
 $room_admin_email = get_form_var('room_admin_email', 'string');
 $area_disabled = get_form_var('area_disabled', 'string');
+$area_timezone = get_form_var('area_timezone', 'string');
 $area_admin_email = get_form_var('area_admin_email', 'string');
 $area_morningstarts = get_form_var('area_morningstarts', 'int');
 $area_morningstarts_minutes = get_form_var('area_morningstarts_minutes', 'int');
 $area_morning_ampm = get_form_var('area_morning_ampm', 'string');
 $area_res_mins = get_form_var('area_res_mins', 'int');
 $area_def_duration_mins = get_form_var('area_def_duration_mins', 'int');
+$area_def_duration_all_day = get_form_var('area_def_duration_all_day', 'string');
 $area_eveningends = get_form_var('area_eveningends', 'int');
 $area_eveningends_minutes = get_form_var('area_eveningends_minutes', 'int');
 $area_evening_ampm = get_form_var('area_evening_ampm', 'string');
@@ -87,6 +172,15 @@ $custom_html = get_form_var('custom_html', 'string');  // Used for both area and
 $change_done = get_form_var('change_done', 'string');
 $change_room = get_form_var('change_room', 'string');
 $change_area = get_form_var('change_area', 'string');
+
+// Get the max_per_interval form variables
+foreach ($interval_types as $interval_type)
+{
+  $var = "area_max_per_${interval_type}";
+  $$var = get_form_var($var, 'int');
+  $var = "area_max_per_${interval_type}_enabled";
+  $$var = get_form_var($var, 'string');
+}
 
 // Get the information about the fields in the room table
 $fields = sql_field_info($tbl_room);
@@ -192,8 +286,13 @@ if ($phase == 2)
       // (only do this if you're changing the room name or the area - if you're
       // just editing the other details for an existing room we don't want to reject
       // the edit because the room already exists!)
+      // [SQL escaping done by sql_syntax_casesensitive_equals()]
       elseif ( (($new_area != $old_area) || ($room_name != $old_room_name))
-              && sql_query1("SELECT COUNT(*) FROM $tbl_room WHERE room_name='" . addslashes($room_name) . "' AND area_id=$new_area LIMIT 1") > 0)
+              && sql_query1("SELECT COUNT(*)
+                               FROM $tbl_room
+                              WHERE" . sql_syntax_casesensitive_equals("room_name", $room_name) . "
+                                AND area_id=$new_area
+                              LIMIT 1") > 0)
       {
         $valid_room_name = FALSE;
       }
@@ -219,22 +318,22 @@ if ($phase == 2)
                 $assign_array[] = "disabled=$room_disabled";
                 break;
               case 'room_name':
-                $assign_array[] = "room_name='" . addslashes($room_name) . "'";
+                $assign_array[] = "room_name='" . sql_escape($room_name) . "'";
                 break;
               case 'sort_key':
-                $assign_array[] = "sort_key='" . addslashes($sort_key) . "'";
+                $assign_array[] = "sort_key='" . sql_escape($sort_key) . "'";
                 break;
               case 'description':
-                $assign_array[] = "description='" . addslashes($description) . "'";
+                $assign_array[] = "description='" . sql_escape($description) . "'";
                 break;
               case 'capacity':
                 $assign_array[] = "capacity=$capacity";
                 break;
               case 'room_admin_email':
-                $assign_array[] = "room_admin_email='" . addslashes($room_admin_email) . "'";
+                $assign_array[] = "room_admin_email='" . sql_escape($room_admin_email) . "'";
                 break;
               case 'custom_html':
-                $assign_array[] = "custom_html='" . addslashes($custom_html) . "'";
+                $assign_array[] = "custom_html='" . sql_escape($custom_html) . "'";
                 break;
               // then look at any user defined fields
               default:
@@ -251,7 +350,7 @@ if ($phase == 2)
                     }
                     break;
                   default:
-                    $$var = "'" . addslashes($$var) . "'";
+                    $$var = "'" . sql_escape($$var) . "'";
                     break;
                 }
                 // Note that we don't have to escape or quote the fieldname
@@ -346,6 +445,7 @@ if ($phase == 2)
   
     // Convert booleans into 0/1 (necessary for PostgreSQL)
     $area_disabled = (!empty($area_disabled)) ? 1 : 0;
+    $area_def_duration_all_day = (!empty($area_def_duration_all_day)) ? 1 : 0;
     $area_min_ba_enabled = (!empty($area_min_ba_enabled)) ? 1 : 0;
     $area_max_ba_enabled = (!empty($area_max_ba_enabled)) ? 1 : 0;
     $area_private_enabled = (!empty($area_private_enabled)) ? 1 : 0;
@@ -356,6 +456,11 @@ if ($phase == 2)
     $area_enable_periods = (!empty($area_enable_periods)) ? 1 : 0;
     $area_confirmation_enabled = (!empty($area_confirmation_enabled)) ? 1 : 0;
     $area_confirmed_default = (!empty($area_confirmed_default)) ? 1 : 0;
+    foreach ($interval_types as $interval_type)
+    {
+      $var = "area_max_per_${interval_type}_enabled";
+      $$var = (!empty($$var)) ? 1 : 0;
+    }
     
     if (!$area_enable_periods)
     { 
@@ -390,14 +495,16 @@ if ($phase == 2)
     {
       $sql = "UPDATE $tbl_area SET ";
       $assign_array = array();
-      $assign_array[] = "area_name='" . addslashes($area_name) . "'";
+      $assign_array[] = "area_name='" . sql_escape($area_name) . "'";
       $assign_array[] = "disabled=" . $area_disabled;
-      $assign_array[] = "area_admin_email='" . addslashes($area_admin_email) . "'";
-      $assign_array[] = "custom_html='" . addslashes($custom_html) . "'";
+      $assign_array[] = "timezone='" . sql_escape($area_timezone) . "'";
+      $assign_array[] = "area_admin_email='" . sql_escape($area_admin_email) . "'";
+      $assign_array[] = "custom_html='" . sql_escape($custom_html) . "'";
       if (!$area_enable_periods)
       {
         $assign_array[] = "resolution=" . $area_res_mins * 60;
         $assign_array[] = "default_duration=" . $area_def_duration_mins * 60;
+        $assign_array[] = "default_duration_all_day=" . $area_def_duration_all_day;
         $assign_array[] = "morningstarts=" . $area_morningstarts;
         $assign_array[] = "morningstarts_minutes=" . $area_morningstarts_minutes;
         $assign_array[] = "eveningends=" . $area_eveningends;
@@ -415,6 +522,22 @@ if ($phase == 2)
       if (isset($area_max_ba_value))
       {
         $assign_array[] = "max_book_ahead_secs=" . $area_max_ba_value;
+      }
+      
+      foreach($interval_types as $interval_type)
+      {
+        $var = "max_per_${interval_type}_enabled";
+        $area_var = "area_" . $var;
+        $assign_array[] = "$var=" . $$area_var;
+        
+        $var = "max_per_${interval_type}";
+        $area_var = "area_" . $var;
+        if (isset($$area_var))
+        {
+          // only update these fields if they are set;  they might be NULL because
+          // they have been disabled by JavaScript
+          $assign_array[] = "$var=" . $$area_var;
+        }
       }
       
       $assign_array[] = "private_enabled=" . $area_private_enabled;
@@ -530,19 +653,22 @@ if (isset($change_room) && !empty($room))
       echo "</div>\n";
       
       // Status (Enabled or Disabled)
-      echo "<div>\n";
-      echo "<label title=\"" . get_vocab("disabled_room_note") . "\">" . get_vocab("status") . ":</label>\n";
-      echo "<div class=\"group\">\n";
-      echo "<label>\n";
-      $checked = ($row['disabled']) ? "" : " checked=\"checked\"";
-      echo "<input class=\"radio\" type=\"radio\" name=\"room_disabled\" value=\"0\"$checked>\n";
-      echo get_vocab("enabled") . "</label>\n";
-      echo "<label>\n";
-      $checked = ($row['disabled']) ? " checked=\"checked\"" : "";
-      echo "<input class=\"radio\" type=\"radio\" name=\"room_disabled\" value=\"1\"$checked>\n";
-      echo get_vocab("disabled") . "</label>\n";
-      echo "</div>\n";
-      echo "</div>\n";
+      if ($is_admin)
+      {
+        echo "<div>\n";
+        echo "<label title=\"" . get_vocab("disabled_room_note") . "\">" . get_vocab("status") . ":</label>\n";
+        echo "<div class=\"group\">\n";
+        echo "<label>\n";
+        $checked = ($row['disabled']) ? "" : " checked=\"checked\"";
+        echo "<input class=\"radio\" type=\"radio\" name=\"room_disabled\" value=\"0\"${checked}${disabled}>\n";
+        echo get_vocab("enabled") . "</label>\n";
+        echo "<label>\n";
+        $checked = ($row['disabled']) ? " checked=\"checked\"" : "";
+        echo "<input class=\"radio\" type=\"radio\" name=\"room_disabled\" value=\"1\"${checked}${disabled}>\n";
+        echo get_vocab("disabled") . "</label>\n";
+        echo "</div>\n";
+        echo "</div>\n";
+      }
 
       // Sort key
       if ($is_admin)
@@ -639,7 +765,7 @@ if (isset($change_room) && !empty($room))
       { 
         echo "<div id=\"edit_area_room_submit_save\">\n";
         echo "<input type=\"hidden\" name=\"phase\" value=\"2\">";
-        echo "<input class=\"submit\" type=\"submit\" name=\"change_room\" value=\"" . get_vocab("change") . "\">\n";
+        echo "<input class=\"submit default_action\" type=\"submit\" name=\"change_room\" value=\"" . get_vocab("change") . "\">\n";
         echo "</div>\n";
       }
       echo "</fieldset>\n";
@@ -725,6 +851,9 @@ if (isset($change_area) &&!empty($area))
         echo get_vocab("disabled") . "</label>\n";
         echo "</div>\n";
         echo "</div>\n";
+        
+        // Timezone
+        create_field_entry_timezone();
         ?>
     
         <div>
@@ -914,12 +1043,18 @@ if (isset($change_area) &&!empty($area))
       
       <div class="div_dur_mins">
       <label for="area_res_mins"><?php echo get_vocab("area_res_mins") ?>:</label>
-      <input type="text" id="area_res_mins" name="area_res_mins" value="<?php echo $resolution/60 ?>" onChange="changeSelect(this.form)">
+      <input type="number" min="1" step="1" id="area_res_mins" name="area_res_mins" value="<?php echo $resolution/60 ?>" onChange="changeSelect(this.form)">
       </div>
       
       <div class="div_dur_mins">
       <label for="area_def_duration_mins"><?php echo get_vocab("area_def_duration_mins") ?>:</label>
-      <input type="text" id="area_def_duration_mins" name="area_def_duration_mins" value="<?php echo $default_duration/60 ?>">
+      <input type="number" min="1" step="1" id="area_def_duration_mins" name="area_def_duration_mins" value="<?php echo $default_duration/60 ?>">
+      <?php
+      echo "<input type=\"checkbox\" id=\"area_def_duration_all_day\" name=\"area_def_duration_all_day\"" .
+           (($default_duration_all_day) ? " checked=\"checked\"" : "") .
+           ">\n";
+      ?>
+      <label class="secondary" for="area_def_duration_all_day"><?php echo get_vocab("all_day") ?></label>
       </div>
       <?php
       echo "<div id=\"last_slot\">\n";
@@ -990,11 +1125,10 @@ if (isset($change_area) &&!empty($area))
       echo "</div>\n";
       // Minimum book ahead
       echo "<div>\n";
-      echo "<label for=\"area_min_book_ahead\">" . get_vocab("min_book_ahead") . ":</label>\n";
-      echo "<input class=\"checkbox\" type=\"checkbox\" id=\"area_min_ba_enabled\" name=\"area_min_ba_enabled\"" .
-           (($min_book_ahead_enabled) ? " checked=\"checked\"" : "") .
-           " onChange=\"check_book_ahead()\">\n";
-      echo "<input class=\"text\" type=\"text\" name=\"area_min_ba_value\" value=\"$min_ba_value\">";
+      echo "<label>" . get_vocab("min_book_ahead") . ":</label>\n";
+      echo "<input class=\"enabler checkbox\" type=\"checkbox\" id=\"area_min_ba_enabled\" name=\"area_min_ba_enabled\"" .
+           (($min_book_ahead_enabled) ? " checked=\"checked\"" : "") . ">\n";
+      echo "<input class=\"text\" type=\"number\" min=\"0\" step=\"1\" name=\"area_min_ba_value\" value=\"$min_ba_value\">";
       echo "<select id=\"area_min_ba_units\" name=\"area_min_ba_units\">\n";
       $units = array("seconds", "minutes", "hours", "days", "weeks");
       foreach ($units as $unit)
@@ -1007,11 +1141,10 @@ if (isset($change_area) &&!empty($area))
       echo "</div>\n";
       // Maximum book ahead
       echo "<div>\n";
-      echo "<label for=\"area_max_book_ahead\">" . get_vocab("max_book_ahead") . ":</label>\n";
-      echo "<input class=\"checkbox\" type=\"checkbox\" id=\"area_max_ba_enabled\" name=\"area_max_ba_enabled\"" .
-           (($max_book_ahead_enabled) ? " checked=\"checked\"" : "") .
-           " onChange=\"check_book_ahead()\">\n";
-      echo "<input class=\"text\" type=\"text\" name=\"area_max_ba_value\" value=\"$max_ba_value\">";
+      echo "<label>" . get_vocab("max_book_ahead") . ":</label>\n";
+      echo "<input class=\"enabler checkbox\" type=\"checkbox\" id=\"area_max_ba_enabled\" name=\"area_max_ba_enabled\"" .
+           (($max_book_ahead_enabled) ? " checked=\"checked\"" : "") . ">\n";
+      echo "<input class=\"text\" type=\"number\" min=\"0\" step=\"1\" name=\"area_max_ba_value\" value=\"$max_ba_value\">";
       echo "<select id=\"area_max_ba_units\" name=\"area_max_ba_units\">\n";
       $units = array("seconds", "minutes", "hours", "days", "weeks");
       foreach ($units as $unit)
@@ -1022,6 +1155,42 @@ if (isset($change_area) &&!empty($area))
       }
       echo "</select>\n";
       echo "</div>\n";
+      
+      // The max_per booking policies
+      echo "<table>\n";
+      
+      echo "<thead>\n";
+      echo "<tr>\n";
+      echo "<th></th>\n";
+      echo "<th>" . get_vocab("this_area") . "</th>\n";
+      echo "<th title=\"" . get_vocab("whole_system_note") . "\">" . get_vocab("whole_system") . "</th>\n";
+      echo "</tr>\n";
+      echo "</thead>\n";
+      
+      echo "<tbody>\n";
+      foreach ($interval_types as $interval_type)
+      {
+        echo "<tr>\n";
+        echo "<td><label>" . get_vocab("max_per_${interval_type}") . ":</label></td>\n";
+        $var = "max_per_${interval_type}_enabled";
+        echo "<td><input class=\"enabler checkbox\" type=\"checkbox\" id=\"area_max_per_${interval_type}_enabled\" name=\"area_max_per_${interval_type}_enabled\"" .
+             (($max_per_interval_area_enabled[$interval_type]) ? " checked=\"checked\"" : "") .
+             ">\n";
+        $var = "max_per_${interval_type}";
+        echo "<input class=\"text\" type=\"number\" min=\"0\" step=\"1\" name=\"area_max_per_${interval_type}\" value=\"$max_per_interval_area[$interval_type]\"></td>\n"; 
+        echo "<td>\n";
+        echo "<input class=\"checkbox\" type=\"checkbox\" disabled=\"disabled\"" .
+             (($max_per_interval_global_enabled[$interval_type]) ? " checked=\"checked\"" : "") .
+             ">\n";
+        echo "<input class=\"text\" disabled=\"disabled\" value=\"" . $max_per_interval_global[$interval_type] . "\">\n";
+        echo "</td>\n";
+        echo "</tr>\n";
+      }
+      echo "</tbody>\n";
+      
+      echo "</table>\n";
+      
+      
       echo "</fieldset>\n";
       ?>
       
@@ -1132,7 +1301,7 @@ if (isset($change_area) &&!empty($area))
         </div>
         <div id="edit_area_room_submit_save">
           <input type="hidden" name="phase" value="2">
-          <input class="submit" type="submit" name="change_area" value="<?php echo get_vocab("change") ?>">
+          <input class="submit default_action" type="submit" name="change_area" value="<?php echo get_vocab("change") ?>">
         </div>
       </fieldset>
     
@@ -1141,4 +1310,5 @@ if (isset($change_area) &&!empty($area))
   <?php
 }
 
-require_once "trailer.inc" ?>
+output_trailer();
+?>

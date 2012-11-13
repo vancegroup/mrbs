@@ -13,9 +13,10 @@ $tbl_repeat    = $db_tbl_prefix . "repeat";
 $tbl_room      = $db_tbl_prefix . "room";
 $tbl_users     = $db_tbl_prefix . "users";
 $tbl_variables = $db_tbl_prefix . "variables";
+$tbl_zoneinfo  = $db_tbl_prefix . "zoneinfo";
 
 
-$db_schema_version = 26;
+$db_schema_version = 30;
 $local_db_schema_version = 1;
 
 
@@ -51,6 +52,28 @@ function sql_free($r)
 
   $f = "sql_${db_sys}_free";
   $f($r, $db_conn);
+}
+
+
+// Escapes special characters in a string for use in an SQL statement
+function sql_escape($str)
+{
+  if (func_num_args() > 1)
+  {
+    $handle = func_get_arg(1);
+    $db_sys = $handle['system'];
+    $db_conn = $handle['connection'];
+  }
+  else
+  {
+    global $dbsys;
+
+    $db_sys = $dbsys;
+    $db_conn = null;
+  }
+  
+  $f = "sql_${db_sys}_escape";
+  return $f($str, $db_conn);
 }
 
 
@@ -99,6 +122,39 @@ function sql_query1($sql)
 }
 
 
+// Run an SQL query that returns a simple one dimensional array of results.
+// The SQL query must select only one column.   Returns an empty array if
+// no results, or FALSE if there's an error
+function sql_query_array($sql)
+{
+  if (func_num_args() > 1)
+  {
+    $handle = func_get_arg(1);
+    $db_conn = $handle['connection'];
+  }
+  else
+  {
+    $db_conn = NULL;
+  }
+  
+  $res = ($db_conn) ? sql_query($sql, $db_conn) : sql_query($sql);
+  
+  if ($res === FALSE)
+  {
+    return FALSE;
+  }
+  else
+  {
+    $result = array();
+    for ($i = 0; ($row = sql_row($res, $i)); $i++)
+    {
+      $result[] = $row[0];
+    }
+    return $result;
+  }
+}
+
+
 // Run a SQL query, returns a result object
 function sql_query($sql)
 {
@@ -115,7 +171,6 @@ function sql_query($sql)
     $db_sys = $dbsys;
     $db_conn = null;
   }
-
   $f = "sql_${db_sys}_query";
   return $f($sql, $db_conn);
 }
@@ -383,6 +438,29 @@ function sql_syntax_timestamp_to_unix($fieldname)
 
   $f = "sql_${db_sys}_syntax_timestamp_to_unix";
   return $f($fieldname, $db_conn);
+}
+
+
+// Returns the syntax for a case sensitive string "equals" function
+// (By default MySQL is case insensitive, whereas PostgreSQL is not)
+function sql_syntax_casesensitive_equals($fieldname, $s)
+{
+  if (func_num_args() > 2)
+  {
+    $handle = func_get_arg(2);
+    $db_sys = $handle['system'];
+    $db_conn = $handle['connection'];
+  }
+  else
+  {
+    global $dbsys;
+
+    $db_sys = $dbsys;
+    $db_conn = null;
+  }
+
+  $f = "sql_${db_sys}_syntax_casesensitive_equals";
+  return $f($fieldname, $s, $db_conn);
 }
 
 

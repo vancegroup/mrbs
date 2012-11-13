@@ -1,7 +1,7 @@
 <?php
 // $Id$
 
-require_once "defaultincludes.inc";
+require "defaultincludes.inc";
 require_once "mrbs_sql.inc";
 require_once "functions_view.inc";
 
@@ -130,6 +130,8 @@ get_area_settings($row['area_id']);
 $room_disabled = $row['room_disabled'] || $row['area_disabled'];
 // Get the status
 $status = $row['status'];
+// Get the creator
+$create_by = $row['create_by'];
 // Work out whether this event should be kept private
 $private = $row['status'] & STATUS_PRIVATE;
 $writeable = getWritable($row['create_by'], $user, $row['room_id']);
@@ -168,10 +170,17 @@ if ($series == 1)
             LIMIT 1";
     $id = sql_query1($sql);
   }
+  $repeat_info_time = $row['repeat_info_time'];
+  $repeat_info_user = $row['repeat_info_user'];
+  $repeat_info_text = $row['repeat_info_text'];
 }
 else
 {
   $repeat_id = $row['repeat_id'];
+  
+  $entry_info_time = $row['entry_info_time'];
+  $entry_info_user = $row['entry_info_user'];
+  $entry_info_text = $row['entry_info_text'];
 }
 
 
@@ -188,11 +197,7 @@ if (isset($action) && ($action == "export"))
     exit;
   }
   else
-  {
-    require_once "functions_ical.inc";
-    header("Content-Type: application/ics;  charset=" . get_charset(). "; name=\"" . $mail_settings['ics_filename'] . ".ics\"");
-    header("Content-Disposition: attachment; filename=\"" . $mail_settings['ics_filename'] . ".ics\"");
-    
+  {    
     // Construct the SQL query
     $sql = "SELECT E.*, "
          .  sql_syntax_timestamp_to_unix("E.timestamp") . " AS last_updated, "
@@ -208,16 +213,32 @@ if (isset($action) && ($action == "export"))
     {
       $sql .= ", $tbl_repeat T"
             . " WHERE E.repeat_id=$repeat_id"
-            . " AND E.repeat_id=T.id"
-            . " ORDER BY E.ical_recur_id";
+            . " AND E.repeat_id=T.id";
     }
     else
     {
       $sql .= " WHERE E.id=$id";
     }
+    
+    $sql .= " AND E.room_id=R.id
+              AND R.area_id=A.id";
+              
+    if ($series)
+    {
+      $sql .= " ORDER BY E.ical_recur_id";
+    }
     $res = sql_query($sql);
+    if ($res === FALSE)
+    {
+      trigger_error(sql_error(), E_USER_WARNING);
+      fatal_error(FALSE, get_vocab("fatal_db_error"));
+    }
     
     // Export the calendar
+    require_once "functions_ical.inc";
+    header("Content-Type: application/ics;  charset=" . get_charset(). "; name=\"" . $mail_settings['ics_filename'] . ".ics\"");
+    header("Content-Disposition: attachment; filename=\"" . $mail_settings['ics_filename'] . ".ics\"");
+
     export_icalendar($res, $keep_private);
     exit;
   }
@@ -336,7 +357,7 @@ if ($approval_enabled && !$room_disabled && ($status & STATUS_AWAITING_APPROVAL)
   else
   {
     // Buttons for those who are allowed to approve this booking
-    if (auth_book_admin($user, $room_id))
+    if (auth_book_admin($user, $row['room_id']))
     {
       if (!$series)
       {
@@ -458,5 +479,5 @@ echo create_details_body($row, TRUE, $keep_private, $room_disabled);
 </div>
 
 <?php
-require_once "trailer.inc";
+output_trailer();
 ?>

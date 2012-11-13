@@ -42,6 +42,22 @@ function sql_pgsql_free ($r, $db_conn = null)
 }
 
 
+// Escapes special characters in a string for use in an SQL statement
+function sql_pgsql_escape($str, $db_conn = null)
+{
+  sql_pgsql_ensure_handle($db_conn);
+  
+  if (function_exists('pg_escape_string'))
+  {
+    return pg_escape_string($db_conn, $str);
+  }
+  else
+  {
+    return addslashes($str);
+  }
+}
+
+
 // Execute a non-SELECT SQL command (insert/update/delete).
 // Returns the number of tuples affected if OK (a number >= 0).
 // Returns -1 on error; use sql_error to get the error message.
@@ -279,6 +295,15 @@ function sql_pgsql_syntax_timestamp_to_unix($fieldname, $db_conn = null)
 }
 
 
+// Returns the syntax for a case sensitive string "equals" function
+function sql_pgsql_syntax_casesensitive_equals($fieldname, $s, $db_conn = null)
+{
+  sql_pgsql_ensure_handle($db_conn);
+
+  return " \"$fieldname\"='" . sql_pgsql_escape($s) . "'";
+}
+
+
 // Generate non-standard SQL to match a string anywhere in a field's value
 // in a case insensitive manner. $s is the un-escaped/un-slashed string.
 // In PostgreSQL, we can do case insensitive regexp with ~*, but not case
@@ -365,7 +390,7 @@ function sql_pgsql_table_exists($table, $db_conn = null)
   sql_pgsql_ensure_handle($db_conn);
 
   $res = sql_pgsql_query1("SELECT relname FROM pg_class ".
-                          "WHERE relname = '".addslashes($table)."'");
+                          "WHERE relname = '".sql_pgsql_escape($table)."'");
 
   return ($res == -1) ? FALSE : TRUE;
 }
@@ -403,15 +428,20 @@ function sql_pgsql_field_info($table, $db_conn = null)
                       'smallint'          => 'integer',
                       'text'              => 'character');
   
-  $fields = array();
   $res = sql_pgsql_query("SELECT column_name, data_type, numeric_precision,
                                  character_maximum_length, character_octet_length,
                                  is_nullable
                             FROM information_schema.columns
                            WHERE table_name ='$table'
                         ORDER BY ordinal_position");
-  if ($res && (sql_pgsql_count($res) > 0))
+  if ($res === FALSE)
   {
+    trigger_error(pg_result_error($res), E_USER_WARNING);
+    fatal_error(TRUE, get_vocab("fatal_db_error"));
+  }
+  else
+  {
+    $fields = array();
     for ($i = 0; ($row = sql_pgsql_row_keyed($res, $i)); $i++)
     {
       $name = $row['column_name'];
@@ -440,8 +470,8 @@ function sql_pgsql_field_info($table, $db_conn = null)
       $fields[$i]['length'] = $length;
       $fields[$i]['is_nullable'] = $is_nullable;
     }
+    return $fields;
   }
-  return $fields;
 }
 
 
@@ -476,7 +506,9 @@ function sql_pgsql_connect($host, $username, $password, $db_name,
     echo "\n<p>\n" . get_vocab("failed_connect_db") . "\n</p>\n";
     exit;
   }
-
+  
+  pg_set_client_encoding($db_conn, 'UTF8');
+  
   return $db_conn;
 }
 

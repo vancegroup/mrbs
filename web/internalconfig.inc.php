@@ -39,6 +39,12 @@ if (!empty($dateformat))
   $strftime_format['daymonth']     = "%d %b";
 }
 
+// Variables no longer used in versions of MRBS > 1.4.7
+
+// $highlight_method
+// $javascript_cursor
+// $mail_charset
+
 
 /********************************************************
  * Checking
@@ -79,14 +85,51 @@ else
  * DOCTYPE - internal use, do not change
  ***************************************/
 
- define('DOCTYPE', '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">');
+ define('DOCTYPE', '<!DOCTYPE html>');
  
  // Records which DOCTYPE is being used.    Do not change - it will not change the DOCTYPE
  // that is used;  it is merely used when the code needs to know the DOCTYPE, for example
  // in calls to nl2br.   TRUE means XHTML, FALSE means HTML.
  define('IS_XHTML', FALSE);
+
  
+/*************************************************
+ * REPORT constants - internal use, do not change
+ *************************************************/
  
+// Constant definitions for the value of the output parameter. 
+define('REPORT',       0);
+define('SUMMARY',      1);
+
+// Constants defining the ouput format.
+define('OUTPUT_HTML',  0);
+define('OUTPUT_CSV',   1);
+define('OUTPUT_ICAL',  2);
+
+// Constants for booking privacy matching
+define('PRIVATE_NO',   0);
+define('PRIVATE_YES',  1);
+define('PRIVATE_BOTH', 2);  // Can be anything other than 0 or 1
+
+// Constants for booking confirmation matching
+define('CONFIRMED_NO',   0);
+define('CONFIRMED_YES',  1);
+define('CONFIRMED_BOTH', 2);  // Can be anything other than 0 or 1
+
+// Constants for booking approval matching
+define('APPROVED_NO',   0);
+define('APPROVED_YES',  1);
+define('APPROVED_BOTH', 2);  // Can be anything other than 0 or 1
+
+// Constants for mode
+define('MODE_TIMES',   1);
+define('MODE_PERIODS', 2);
+
+// Formats for sprintf
+define('FORMAT_TIMES',   "%.2f");
+define('FORMAT_PERIODS', "%d");
+
+
  /*************************************************
  * ENTRY TYPES - internal use, do not change
  *************************************************/
@@ -130,6 +173,14 @@ define('REP_MONTHLY',         3);
 define('REP_YEARLY',          4);
 define('REP_MONTHLY_SAMEDAY', 5);
 define('REP_N_WEEKLY',        6);
+
+
+/*************************************************
+ * DIRECTORIES - internal use, do not change
+ *************************************************/
+ 
+define('TZDIR',           'tzurl/zoneinfo');          // Directory containing TZURL definitions
+define('TZDIR_OUTLOOK',   'tzurl/zoneinfo-outlook');  // Outlook compatible TZURL definitions
 
 
 /*************************************************
@@ -204,16 +255,26 @@ $standard_fields['room'] = array('id',
                                  'custom_html');
 
 // Boolean fields.    These are fields which are treated as booleans                                
-$boolean_fields['area'] = array('private_enabled',
+$boolean_fields['area'] = array('default_duration_all_day',
+                                'private_enabled',
                                 'private_default',
                                 'private_mandatory',
                                 'min_book_ahead_enabled',
                                 'max_book_ahead_enabled',
+                                'max_per_day_enabled',
+                                'max_per_week_enabled',
+                                'max_per_month_enabled',
+                                'max_per_year_enabled',
+                                'max_per_future_enabled',
+                                'max_duration_enabled',  // not yet a per-area setting, but will be sometime
                                 'approval_enabled',
                                 'reminders_enabled',
                                 'enable_periods',
                                 'confirmation_enabled',
                                 'confirmed_default');
+                                
+// Permitted values for 'private_override'
+$private_override_options = array('none', 'public', 'private');
                                    
 /********************************************************
  * Miscellaneous
@@ -225,26 +286,46 @@ $boolean_fields['area'] = array('private_enabled',
 // per-area settings and perhaps ought to be revisited at some stage]
 
 $area_defaults = array();
-$area_defaults['resolution']             = $resolution;
-$area_defaults['default_duration']       = $default_duration;
-$area_defaults['morningstarts']          = $morningstarts;
-$area_defaults['morningstarts_minutes']  = $morningstarts_minutes;
-$area_defaults['eveningends']            = $eveningends;
-$area_defaults['eveningends_minutes']    = $eveningends_minutes;
-$area_defaults['private_enabled']        = $private_enabled;
-$area_defaults['private_default']        = $private_default;
-$area_defaults['private_mandatory']      = $private_mandatory;
-$area_defaults['private_override']       = $private_override;
-$area_defaults['min_book_ahead_enabled'] = $min_book_ahead_enabled;
-$area_defaults['max_book_ahead_enabled'] = $max_book_ahead_enabled;
-$area_defaults['min_book_ahead_secs']    = $min_book_ahead_secs;
-$area_defaults['max_book_ahead_secs']    = $max_book_ahead_secs;
-$area_defaults['approval_enabled']       = $approval_enabled;
-$area_defaults['reminders_enabled']      = $reminders_enabled;
-$area_defaults['enable_periods']         = $enable_periods;
-$area_defaults['confirmation_enabled']   = $confirmation_enabled;
-$area_defaults['confirmed_default']      = $confirmed_default;
+$area_defaults['timezone']                 = $timezone;
+$area_defaults['resolution']               = $resolution;
+$area_defaults['default_duration']         = $default_duration;
+$area_defaults['default_duration_all_day'] = $default_duration_all_day;
+$area_defaults['morningstarts']            = $morningstarts;
+$area_defaults['morningstarts_minutes']    = $morningstarts_minutes;
+$area_defaults['eveningends']              = $eveningends;
+$area_defaults['eveningends_minutes']      = $eveningends_minutes;
+$area_defaults['private_enabled']          = $private_enabled;
+$area_defaults['private_default']          = $private_default;
+$area_defaults['private_mandatory']        = $private_mandatory;
+$area_defaults['private_override']         = $private_override;
+$area_defaults['min_book_ahead_enabled']   = $min_book_ahead_enabled;
+$area_defaults['max_book_ahead_enabled']   = $max_book_ahead_enabled;
+$area_defaults['min_book_ahead_secs']      = $min_book_ahead_secs;
+$area_defaults['max_book_ahead_secs']      = $max_book_ahead_secs;
+$area_defaults['max_per_day_enabled']      = $max_per_interval_area_enabled['day'];
+$area_defaults['max_per_day']              = $max_per_interval_area['day'];
+$area_defaults['max_per_week_enabled']     = $max_per_interval_area_enabled['week'];
+$area_defaults['max_per_week']             = $max_per_interval_area['week'];
+$area_defaults['max_per_month_enabled']    = $max_per_interval_area_enabled['month'];
+$area_defaults['max_per_month']            = $max_per_interval_area['month'];
+$area_defaults['max_per_year_enabled']     = $max_per_interval_area_enabled['year'];
+$area_defaults['max_per_year']             = $max_per_interval_area['year'];
+$area_defaults['max_per_future_enabled']   = $max_per_interval_area_enabled['future'];
+$area_defaults['max_per_future']           = $max_per_interval_area['future'];
+$area_defaults['approval_enabled']         = $approval_enabled;
+$area_defaults['reminders_enabled']        = $reminders_enabled;
+$area_defaults['enable_periods']           = $enable_periods;
+$area_defaults['confirmation_enabled']     = $confirmation_enabled;
+$area_defaults['confirmed_default']        = $confirmed_default;
 
+// We send Ajax requests to del_entry_ajax.php with data as an array of ids.
+// In order to stop the POST request getting too large and triggering a 406
+// error, we split the requests into batches with a maximum number of ids
+// in the array defined below.
+define('DEL_ENTRY_AJAX_BATCH_SIZE', 100);
+
+// Interval types used in booking policies
+$interval_types = array('day', 'week', 'month', 'year', 'future');
                
 /********************************************************
  * PHP System Configuration - internal use, do not change

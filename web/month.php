@@ -3,8 +3,9 @@
 
 // mrbs/month.php - Month-at-a-time view
 
-require_once "defaultincludes.inc";
+require "defaultincludes.inc";
 require_once "mincals.inc";
+require_once "functions_table.inc";
 
 $debug_flag = get_form_var('debug_flag', 'int');
 
@@ -20,12 +21,6 @@ function cmp3($a, $b)
     return "= ";
   }
   return "> ";
-}
-
-// Default parameters:
-if (empty($debug_flag))
-{
-  $debug_flag = 0;
 }
 
 // Check the user is authorised for this page
@@ -83,10 +78,7 @@ for ($j = 1; $j<=$days_in_month; $j++)
 }
 
 // Section with areas, rooms, minicals.
-?>
-<div class="screenonly">
-  <div id="dwm_header">
-<?php
+echo "<div id=\"dwm_header\" class=\"screenonly\">\n";
 
 // Get the area and room names (we will need them later for the heading)
 $this_area_name = "";
@@ -103,18 +95,20 @@ echo make_area_select_html('month.php', $area, $year, $month, $day);
 echo make_room_select_html('month.php', $area, $room, $year, $month, $day);
     
 // Draw the three month calendars
-minicals($year, $month, $day, $area, $room, 'month');
+if (!$display_calendar_bottom)
+{
+  minicals($year, $month, $day, $area, $room, 'month');
+}
+
 echo "</div>\n";
 
-// End of "screenonly" div
-echo "</div>\n";
 
 // Don't continue if this room is invalid, which could be because the area
 // has no rooms, or else the room or area has been disabled
 if ($room_invalid)
 {
   echo "<h1>".get_vocab("no_rooms_for_area")."</h1>";
-  require_once "trailer.inc";
+  output_trailer();
   exit;
 }
 
@@ -133,41 +127,26 @@ $i= mktime(12,0,0,$month-1,1,$year);
 $yy = date("Y",$i);
 $ym = date("n",$i);
 $yd = $day;
-while (!checkdate($ym, $yd, $yy))
+while (!checkdate($ym, $yd, $yy) && ($yd > 1))
 {
   $yd--;
-  if ($yd == 0)
-  {
-    $yd   = 1;
-    break;
-  }
 }
 
 $i= mktime(12,0,0,$month+1,1,$year);
 $ty = date("Y",$i);
 $tm = date("n",$i);
 $td = $day;
-while (!checkdate($tm, $td, $ty))
+while (!checkdate($tm, $td, $ty) && ($td > 1))
 {
   $td--;
-  if ($td == 0)
-  {
-    $td   = 1;
-    break;
-  }
 }
 
 $cy = date("Y");
 $cm = date("m");
 $cd = $day;    // preserve the day information
-while (!checkdate($cm, $cd, $cy))
+while (!checkdate($cm, $cd, $cy) && ($cd > 1))
 {
   $cd--;
-  if ($cd == 0)
-  {
-    $cd   = 1;
-    break;
-  }
 }
 
 
@@ -366,24 +345,6 @@ if ($debug_flag)
   echo "</pre>\n";
 }
 
-// Include the active cell content management routines. 
-// Must be included before the beginnning of the main table.
-if ($javascript_cursor) // If authorized in config.inc.php, include the javascript cursor management.
-{
-  echo "<script type=\"text/javascript\" src=\"xbLib.js\"></script>\n";
-  echo "<script type=\"text/javascript\">\n";
-  echo "//<![CDATA[\n";
-  echo "InitActiveCell("
-    . ($show_plus_link ? "true" : "false") . ", "
-    . "false, "
-    . "false, "
-    . "\"$highlight_method\", "
-    . "\"" . get_vocab("click_to_reserve") . "\""
-    . ");\n";
-  echo "//]]>\n";
-  echo "</script>\n";
-}
-
 echo "<table class=\"dwm_main\" id=\"month_main\">\n";
 
 // Weekday name header row:
@@ -451,38 +412,35 @@ for ($cday = 1; $cday <= $days_in_month; $cday++)
     echo "<div class=\"cell_container\">\n";
     
     echo "<div class=\"cell_header\">\n";
-    // first put in the day of the month
-    echo "<a class=\"monthday\" href=\"day.php?year=$year&amp;month=$month&amp;day=$cday&amp;area=$area\">$cday</a>\n";
-    echo "</div>\n";
-    // then the link to make a new booking
-    if ($javascript_cursor)
+    // If it's a Monday (the start of the ISO week), show the week number
+    if ($view_week_number && (($weekcol + $weekstarts)%7 == 1))
     {
-      echo "<script type=\"text/javascript\">\n";
-      echo "//<![CDATA[\n";
-      echo "BeginActiveCell();\n";
-      echo "//]]>\n";
-      echo "</script>\n";
+      echo "<a class=\"week_number\" href=\"week.php?year=$year&amp;month=$month&amp;day=$cday&amp;area=$area&amp;room=$room\">";
+      echo date("W", gmmktime(12, 0, 0, $month, $cday, $year));
+      echo "</a>\n";
     }
+    // then put in the day of the month
+    echo "<a class=\"monthday\" href=\"day.php?year=$year&amp;month=$month&amp;day=$cday&amp;area=$area\">$cday</a>\n";
+
+    echo "</div>\n";
+    
+    // then the link to make a new booking
+    $query_string = "room=$room&amp;area=$area&amp;year=$year&amp;month=$month&amp;day=$cday";
     if ($enable_periods)
     {
-      echo "<a class=\"new_booking\" href=\"edit_entry.php?room=$room&amp;area=$area&amp;period=0&amp;year=$year&amp;month=$month&amp;day=$cday\">\n";
-      echo "<img src=\"images/new.gif\" alt=\"New\" width=\"10\" height=\"10\">\n";
-      echo "</a>\n";
+      $query_string .= "&amp;period=0";
     }
     else
     {
-      echo "<a class=\"new_booking\" href=\"edit_entry.php?room=$room&amp;area=$area&amp;hour=$morningstarts&amp;minute=0&amp;year=$year&amp;month=$month&amp;day=$cday\">\n";
-      echo "<img src=\"images/new.gif\" alt=\"New\" width=\"10\" height=\"10\">\n";
-      echo "</a>\n";
+      $query_string .= "&amp;hour=$morningstarts&amp;minute=0";
     }
-    if ($javascript_cursor)
+    
+    echo "<a class=\"new_booking\" href=\"edit_entry.php?$query_string\">\n";
+    if ($show_plus_link)
     {
-      echo "<script type=\"text/javascript\">\n";
-      echo "//<![CDATA[\n";
-      echo "EndActiveCell();\n";
-      echo "//]]>\n";
-      echo "</script>\n";
+      echo "<img src=\"images/new.gif\" alt=\"New\" width=\"10\" height=\"10\">\n";
     }
+    echo "</a>\n";
     
     // then any bookings for the day
     if (isset($d[$cday]["id"][0]))
@@ -575,5 +533,11 @@ echo "</tr></tbody></table>\n";
 print $before_after_links_html;
 show_colour_key();
 
-require_once "trailer.inc";
+// Draw the three month calendars
+if ($display_calendar_bottom)
+{
+  minicals($year, $month, $day, $area, $room, 'month');
+}
+
+output_trailer();
 ?>

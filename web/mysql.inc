@@ -34,6 +34,22 @@ function sql_mysql_free ($r, $db_conn = null)
 }
 
 
+// Escapes special characters in a string for use in an SQL statement
+function sql_mysql_escape($str, $db_conn = null)
+{
+  sql_mysql_ensure_handle($db_conn);
+  
+  if (function_exists('mysql_real_escape_string'))
+  {
+    return mysql_real_escape_string($str, $db_conn);
+  }
+  else
+  {
+    return addslashes($str);
+  }
+}
+
+
 // Execute a non-SELECT SQL command (insert/update/delete).
 // Returns the number of tuples affected if OK (a number >= 0).
 // Returns -1 on error; use sql_error to get the error message.
@@ -254,6 +270,15 @@ function sql_mysql_syntax_timestamp_to_unix($fieldname, $db_conn = null)
 }
 
 
+// Returns the syntax for a case sensitive string "equals" function
+// (By default MySQL is case insensitive, so we force a binary comparison)
+function sql_mysql_syntax_casesensitive_equals($fieldname, $s, $db_conn = null)
+{
+  sql_mysql_ensure_handle($db_conn);
+
+  return " BINARY `$fieldname`='" . sql_mysql_escape($s) . "'";
+}
+
 // Generate non-standard SQL to match a string anywhere in a field's value
 // in a case insensitive manner. $s is the un-escaped/un-slashed string.
 // In MySQL, REGEXP seems to be case sensitive, so use LIKE instead. But this
@@ -331,7 +356,7 @@ function sql_mysql_table_exists($table, $db_conn = null)
 {
   sql_mysql_ensure_handle($db_conn);
 
-  $res = sql_mysql_query1("SHOW TABLES LIKE '".addslashes($table)."'");
+  $res = sql_mysql_query1("SHOW TABLES LIKE '".sql_mysql_escape($table)."'");
 
   return ($res == -1) ? FALSE : TRUE;
 }
@@ -377,10 +402,15 @@ function sql_mysql_field_info($table, $db_conn = null)
                      'smallint'  => 2,
                      'tinyint'   => 1);
   
-  $fields = array();
   $res = sql_mysql_query("SHOW COLUMNS FROM $table");
-  if ($res && (sql_mysql_count($res) > 0))
+  if ($res === FALSE)
   {
+    trigger_error(mysql_error($db_conn), E_USER_WARNING);
+    fatal_error(TRUE, get_vocab("fatal_db_error"));
+  }
+  else
+  {
+    $fields = array();
     for ($i = 0; ($row = sql_mysql_row_keyed($res, $i)); $i++)
     {
       $name = $row['Field'];
@@ -422,8 +452,8 @@ function sql_mysql_field_info($table, $db_conn = null)
       $fields[$i]['length'] = $length;
       $fields[$i]['is_nullable'] = $is_nullable;
     }
+    return $fields;
   }
-  return $fields;
 }
 
 

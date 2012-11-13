@@ -35,30 +35,42 @@
 
 CREATE TABLE mrbs_area
 (
-  id                     serial primary key,
-  disabled               smallint DEFAULT 0 NOT NULL,
-  area_name              varchar(30),
-  area_admin_email       text,
-  resolution             int,
-  default_duration       int,
-  morningstarts          int,
-  morningstarts_minutes  int,
-  eveningends            int,
-  eveningends_minutes    int,
-  private_enabled        smallint,
-  private_default        smallint,
-  private_mandatory      smallint,
-  private_override       varchar(32),
-  min_book_ahead_enabled smallint,
-  min_book_ahead_secs    int,
-  max_book_ahead_enabled smallint,
-  max_book_ahead_secs    int,
-  custom_html            text,
-  approval_enabled       smallint,
-  reminders_enabled      smallint,
-  enable_periods         smallint,
-  confirmation_enabled   smallint,
-  confirmed_default      smallint
+  id                        serial primary key,
+  disabled                  smallint DEFAULT 0 NOT NULL,
+  area_name                 varchar(30),
+  timezone                  varchar(50),
+  area_admin_email          text,
+  resolution                int,
+  default_duration          int,
+  default_duration_all_day  smallint DEFAULT 0 NOT NULL,
+  morningstarts             int,
+  morningstarts_minutes     int,
+  eveningends               int,
+  eveningends_minutes       int,
+  private_enabled           smallint,
+  private_default           smallint,
+  private_mandatory         smallint,
+  private_override          varchar(32),
+  min_book_ahead_enabled    smallint,
+  min_book_ahead_secs       int,
+  max_book_ahead_enabled    smallint,
+  max_book_ahead_secs       int,
+  max_per_day_enabled       smallint DEFAULT 0 NOT NULL,
+  max_per_day               int DEFAULT 0 NOT NULL,
+  max_per_week_enabled      smallint DEFAULT 0 NOT NULL,
+  max_per_week              int DEFAULT 0 NOT NULL,
+  max_per_month_enabled     smallint DEFAULT 0 NOT NULL,
+  max_per_month             int DEFAULT 0 NOT NULL,
+  max_per_year_enabled      smallint DEFAULT 0 NOT NULL,
+  max_per_year              int DEFAULT 0 NOT NULL,
+  max_per_future_enabled    smallint DEFAULT 0 NOT NULL,
+  max_per_future            int DEFAULT 0 NOT NULL,
+  custom_html               text,
+  approval_enabled          smallint,
+  reminders_enabled         smallint,
+  enable_periods            smallint,
+  confirmation_enabled      smallint,
+  confirmed_default         smallint
 );
 
 CREATE TABLE mrbs_room
@@ -102,7 +114,7 @@ create index mrbs_idxEndTime on mrbs_entry(end_time);
 
 CREATE TABLE mrbs_repeat
 (
-  id          serial primary key,
+  id             serial primary key,
   start_time     int DEFAULT 0 NOT NULL,
   end_time       int DEFAULT 0 NOT NULL,
   rep_type       int DEFAULT 0 NOT NULL,
@@ -131,6 +143,15 @@ CREATE TABLE mrbs_variables
   variable_content text
 );
 
+CREATE TABLE mrbs_zoneinfo
+(
+  id                 serial primary key,
+  timezone           varchar(255) DEFAULT '' NOT NULL,
+  outlook_compatible smallint NOT NULL DEFAULT 0,
+  vtimezone          text,
+  last_updated       int NOT NULL DEFAULT 0
+);
+
 CREATE TABLE mrbs_users
 (
   /* The first four fields are required. Don't remove. */
@@ -142,6 +163,6 @@ CREATE TABLE mrbs_users
 );
 
 INSERT INTO mrbs_variables (variable_name, variable_content)
-  VALUES ('db_version', '26');
+  VALUES ('db_version', '30');
 INSERT INTO mrbs_variables (variable_name, variable_content)
   VALUES ('local_db_version', '1');

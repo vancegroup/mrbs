@@ -35,6 +35,7 @@ $sql = "UPDATE $tbl_entry SET status=(((~status)&1)<<1)|(private&1)";
 $res = sql_command($sql);
 if ($res == -1)
 {
+  trigger_error(sql_error(), E_USER_WARNING);
   // No need to localise, should never happen
   print "<span class=\"error\">Failed to update status column in entry table.</span>";
 }
@@ -60,6 +61,7 @@ $res = sql_command($sql);
 
 if ($res == -1)
 {
+  trigger_error(sql_error(), E_USER_WARNING);
   // No need to localise, should never happen
   print "<span class=\"error\">Failed to update status column in repeat table with privacy status.</span>";
 }
@@ -68,10 +70,11 @@ if ($res == -1)
 // awaiting approval if any one of its individual members is awaiting approval.
 
 // Find all the rows in the entry table that are members of a series and are awaiting approval
-$sql = "SELECT DISTINCT repeat_id FROM $tbl_entry WHERE repeat_id!=" . REP_NONE . " AND status=0";
+$sql = "SELECT DISTINCT repeat_id FROM $tbl_entry WHERE repeat_id!=0 AND (status&" . STATUS_AWAITING_APPROVAL . " != 0)";
 $res = sql_query($sql);
 if ($res === FALSE)
 {
+  trigger_error(sql_error(), E_USER_WARNING);
   fatal_error(FALSE, "Failed to update status column in repeat table with approval status.");
 }
 
@@ -81,8 +84,16 @@ for ($i = 0; ($row = sql_row_keyed($res, $i)); $i++)
   $sql = "UPDATE $tbl_repeat
              SET status=status|" . STATUS_AWAITING_APPROVAL . "
            WHERE id=" . $row['repeat_id'];
-  if (sql_command($sql) != 1)
+  $result = sql_command($sql);
+  if ($result == -1)
   {
+    // We've got an SQL error, so report it
+    trigger_error(sql_error(), E_USER_WARNING);
+  }
+  if ($result != 1)
+  {
+    // Something's gone wrong.   There's either been an SQL error, or else no rows have been
+    // affected, which should not be the case
     fatal_error(FALSE, "Failed to update status column in repeat table with approval status.");
   }
 }  

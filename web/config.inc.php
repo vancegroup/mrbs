@@ -11,10 +11,18 @@
  *   Booking System", "room" and "area").
  **************************************************************************/
 
+/**********
+ * Timezone
+ **********/
+ 
 // The timezone your meeting rooms run in. It is especially important
 // to set this if you're using PHP 5 on Linux. In this configuration
 // if you don't, meetings in a different DST than you are currently
 // in are offset by the DST offset incorrectly.
+//
+// Note that timezones can be set on a per-area basis, so strictly speaking this
+// setting should be in areadefaults.inc.php, but as it is so important to set
+// the right timezone it is included here.
 //
 // When upgrading an existing installation, this should be set to the
 // timezone the web server runs in.  See the INSTALL document for more information.
@@ -46,43 +54,9 @@ $db_tbl_prefix = "mrbs_";
 // $db_nopersist = 1;
 
 
-/* Add lines from systemdefaults.inc.php here to change the default
-   configuration. Do _NOT_ modify systemdefaults.inc.php. */
+/* Add lines from systemdefaults.inc.php and areadefaults.inc.php below here
+   to change the default configuration. Do _NOT_ modify systemdefaults.inc.php
+   or areadefaults.inc.php.  */
 
-
-
-
-
-// This next section must come at the end of the config file - ie after any
-// language and mail settings, as the definitions are used in the included file
-require_once "language.inc";   // DO NOT DELETE THIS LINE
-
-/*************
- * Entry Types
- *************/
-
-// This array maps entry type codes (letters A through J) into descriptions.
-//
-// Each type has a color which is defined in the array $color_types in the Themes
-// directory - just edit whichever include file corresponds to the theme you
-// have chosen in the config settings. (The default is default.inc, unsurprisingly!)
-//
-// The value for each type is a short (one word is best) description of the
-// type. The values must be escaped for HTML output ("R&amp;D").
-// Please leave I and E alone for compatibility.
-// If a type's entry is unset or empty, that type is not defined; it will not
-// be shown in the day view color-key, and not offered in the type selector
-// for new or edited entries.
-
-// $typel["A"] = "A";
-// $typel["B"] = "B";
-// $typel["C"] = "C";
-// $typel["D"] = "D";
-$typel["E"] = get_vocab("external");
-// $typel["F"] = "F";
-// $typel["G"] = "G";
-// $typel["H"] = "H";
-$typel["I"] = get_vocab("internal");
-// $typel["J"] = "J";
 
 ?>

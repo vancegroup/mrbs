@@ -37,14 +37,16 @@ function create_details_row($label, $value, $as_html=FALSE, $class='')
 function create_details_body($data, $as_html=FALSE, $keep_private=FALSE, $room_disabled=FALSE)
 {
   global $enable_periods, $confirmation_enabled, $approval_enabled;
-  global $is_private_field, $standard_fields, $typel;
+  global $is_private_field, $standard_fields;
   global $strftime_format;
+  global $tbl_entry;
+  global $select_options;
   
   // Get the duration if we haven't got it already
   if (!isset($data['duration']))
   {
     // We will translate the units later
-    $d = get_duration($data['start_time'], $data['end_time'], FALSE);
+    $d = get_duration($data['start_time'], $data['end_time'], $enable_periods, FALSE);
     $data['duration'] = $d['duration'];
     $data['dur_units'] = $d['dur_units'];
   }
@@ -113,9 +115,7 @@ function create_details_body($data, $as_html=FALSE, $keep_private=FALSE, $room_d
   $value = $data['area_name'] . " - " . $data['room_name'];
   if ($room_disabled)
   {
-    $value .= ($as_html) ? "<span class=\"note\">" : "";
     $value .= " (" . get_vocab("disabled") . ")";
-    $value .= ($as_html) ? "</span>" : "";
   }
   $tbody .= create_details_row(get_vocab("room"), $value, $as_html);
   // Start date
@@ -141,7 +141,8 @@ function create_details_body($data, $as_html=FALSE, $keep_private=FALSE, $room_d
   }
   $tbody .= create_details_row(get_vocab("end_date"), $end_date, $as_html);
   // Type
-  $value = (empty($typel[$data['type']])) ? "?${data['type']}?" : $typel[$data['type']];
+  $type = get_type_vocab($data['type']);
+  $value = (empty($type)) ? "?${data['type']}?" : $type;
   $tbody .= create_details_row(get_vocab("type"), $value, $as_html);
   // Created by
   $class = ($keep_private && $is_private_field['entry.create_by']) ? "private" : "";
@@ -173,7 +174,25 @@ function create_details_body($data, $as_html=FALSE, $keep_private=FALSE, $room_d
       // Otherwise output a string
       else
       {
-        $value = (isset($data[$key])) ? $data[$key] : "&nbsp;"; 
+        if (isset($data[$key]))
+        {
+          // If the custom field is an associative array then we want
+          // the value rather than the array key
+          if (isset($select_options["entry.$key"]) &&
+              is_assoc($select_options["entry.$key"]) && 
+              array_key_exists($data[$key], $select_options["entry.$key"]))
+          {
+            $value = $select_options["entry.$key"][$data[$key]];
+          }
+          else
+          {
+            $value = $data[$key];
+          }
+        }
+        else
+        {
+          $value = "";
+        }
       }
       $class = ($keep_private && $is_private_field["entry.$key"]) ? "private" : "";
       $tbody .= create_details_row($label, $value, $as_html, $class);

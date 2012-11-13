@@ -1,7 +1,7 @@
 <?php
 // $Id$
 
-require_once "defaultincludes.inc";
+require "defaultincludes.inc";
 
 function display_buttons($row, $is_series)
 {
@@ -88,24 +88,66 @@ function display_buttons($row, $is_series)
   }
 }
 
-// display the header row for a series
-function display_series_header($row, $table_id)
-{  
-  echo "<tr>";  // no \n so as not to create another child in the DOM
-  echo "<th class=\"control\" onClick=\"toggle_table('$table_id')\">&nbsp;</th>\n";
+
+function display_table_head()
+{
+  echo "<thead>\n";
+  echo "<tr>\n";
+  echo "<th class=\"control\">&nbsp;</th>\n";
+  echo "<th class=\"header_name\">" . get_vocab("entry") . "</th>\n";
+  echo "<th class=\"header_create\">" . get_vocab("createdby") . "</th>\n";
+  echo "<th class=\"header_area\">" . get_vocab("area") . "</th>\n";
+  echo "<th class=\"header_room\">" . get_vocab("room") . "</th>\n";
+  echo "<th class=\"header_start_time\">" . get_vocab("start_date") . "</th>\n";
+  echo "<th class=\"header_action\">" . get_vocab("action") . "</th>\n";
+  echo "</tr>\n";
+  echo "</thead>\n";
+}
+
+// display the table head for a subtable
+function display_subtable_head($row)
+{
+  echo "<thead>\n";
+  echo "<tr>\n";
+  echo "<th class=\"control\">&nbsp;</th>\n";
   // reservation name, with a link to the view_entry page
-  echo "<th class=\"header_name\"><a href=\"view_entry.php?id=".$row['repeat_id']."&amp;series=1\">" . htmlspecialchars($row['name']) ."</a></th>\n";
+  echo "<th><a href=\"view_entry.php?id=".$row['repeat_id']."&amp;series=1\">" . htmlspecialchars($row['name']) ."</a></th>\n";
   
   // create_by, area and room names
-  echo "<th class=\"header_create\">" . htmlspecialchars($row['create_by']) . "</th>\n";
-  echo "<th class=\"header_area\">"   . htmlspecialchars($row['area_name']) . "</th>\n";
-  echo "<th class=\"header_room\">"   . htmlspecialchars($row['room_name']) . "</th>\n";
+  echo "<th>" . htmlspecialchars($row['create_by']) . "</th>\n";
+  echo "<th>"   . htmlspecialchars($row['area_name']) . "</th>\n";
+  echo "<th>"   . htmlspecialchars($row['room_name']) . "</th>\n";
   
-  echo "<th class=\"header_start_time\">" . get_vocab("series") . "</th>\n";
+  echo "<th>" . get_vocab("series") . "</th>\n";
   
-  echo "<th class=\"header_action\">\n";
+  echo "<th>&nbsp;</th>\n";
+  echo "</tr>\n";
+  echo "</thead>\n";
+}
+
+
+// display the title row for a series
+function display_series_title_row($row)
+{  
+  echo "<tr id=\"row_" . $row['repeat_id'] . "\">\n";
+  echo "<td class=\"control\">&nbsp;</td>\n";
+  // reservation name, with a link to the view_entry page
+  echo "<td><a href=\"view_entry.php?id=".$row['repeat_id']."&amp;series=1\">" . htmlspecialchars($row['name']) ."</a></td>\n";
+  
+  // create_by, area and room names
+  echo "<td>" . htmlspecialchars($row['create_by']) . "</td>\n";
+  echo "<td>"   . htmlspecialchars($row['area_name']) . "</td>\n";
+  echo "<td>"   . htmlspecialchars($row['room_name']) . "</td>\n";
+  
+  echo "<td>";
+  // <span> for sorting
+  echo "<span title=\"" . $row['start_time'] . "\"></span>";
+  echo get_vocab("series");
+  echo "</td>\n";
+  
+  echo "<td>\n";
   display_buttons($row, TRUE);
-  echo "</th>\n";
+  echo "</td>\n";
   echo "</tr>\n";
 }
 
@@ -113,7 +155,7 @@ function display_series_header($row, $table_id)
 function display_entry_row($row)
 {
   echo "<tr>\n";
-  echo "<td class=\"control\">&nbsp;</td>\n";
+  echo "<td>&nbsp;</td>\n";
     
   // reservation name, with a link to the view_entry page
   echo "<td>";
@@ -127,6 +169,8 @@ function display_entry_row($row)
   // start date, with a link to the day.php
   $link = getdate($row['start_time']);
   echo "<td>";
+  // <span> for sorting
+  echo "<span title=\"" . $row['start_time'] . "\"></span>";
   echo "<a href=\"day.php?day=$link[mday]&amp;month=$link[mon]&amp;year=$link[year]&amp;area=".$row['area_id']."\">";
   if(empty($row['enable_periods']))
   {
@@ -180,7 +224,7 @@ $sql = "SELECT E.id, E.name, E.room_id, E.start_time, E.create_by, " .
 // Ordinary users can only see their own bookings       
 if (!$is_admin)
 {
-  $sql .= " AND E.create_by='" . addslashes($user) . "'";
+  $sql .= " AND E.create_by='" . sql_escape($user) . "'";
 }
 // We want entries for a series to appear together so that we can display
 // them as a separate table below the main entry for the series. 
@@ -198,19 +242,9 @@ if (sql_count($res) == 0)
 }
 else  // display them in a table
 {
-  echo "<table id=\"pending_list\" class=\"admin_table\">\n";
-  echo "<thead>\n";
-  echo "<tr>\n";
-  $n_cols = 7;
-  echo "<th class=\"control\">&nbsp;</th>\n";
-  echo "<th class=\"header_name\">" . get_vocab("entry") . "</th>\n";
-  echo "<th class=\"header_create\">" . get_vocab("createdby") . "</th>\n";
-  echo "<th class=\"header_area\">" . get_vocab("area") . "</th>\n";
-  echo "<th class=\"header_room\">" . get_vocab("room") . "</th>\n";
-  echo "<th class=\"header_start_time\">" . get_vocab("start_date") . "</th>\n";
-  echo "<th class=\"header_action\">" . get_vocab("action") . "</th>\n";
-  echo "</tr>\n";
-  echo "</thead>\n";
+  echo "<div id=\"pending_list\" class=\"datatable_container\">\n";
+  echo "<table id=\"pending_table\" class=\"admin_table display\">\n";
+  display_table_head();
   
   echo "<tbody>\n";
   $last_repeat_id = 0;
@@ -225,20 +259,21 @@ else  // display them in a table
       {
         // end the last series table if there was one
         $is_series = FALSE;
-        echo "</tbody></table></td></tr>\n";
+        echo "</tbody></table></div></td></tr>\n";
       }
     
       if (!empty($row['repeat_id']))
       {
         // we're starting a new series
         $is_series = TRUE;
+        // Put in the title row
+        display_series_title_row($row);
         echo "<tr class=\"sub_table\">\n";
-        echo "<td class=\"sub_table\" colspan=\"$n_cols\">";
-        $table_id = "series" . $row['repeat_id'];
-        echo "<table id=\"$table_id\" class=\"maximised\">";  // no \n so as not to create another child in the DOM
-        echo "<thead>";  // no \n so as not to create another child in the DOM
-        display_series_header($row, $table_id);
-        echo "</thead>\n";
+        echo "<td class=\"sub_table\" colspan=\"7\">";
+        $table_id = "subtable_" . $row['repeat_id'];
+        echo "<div class=\"details\">\n";
+        echo "<table id=\"$table_id\" class=\"admin_table display sub\">\n";
+        display_subtable_head($row);
         echo "<tbody>\n";
       }      
     }
@@ -247,11 +282,12 @@ else  // display them in a table
   if ($is_series)
   {
     // if we were in a series, then close the sub-table
-    echo "</tbody></table></td></tr>\n";
+    echo "</tbody></table></div></td></tr>\n";
   }
   echo "</tbody>\n"; 
-  echo "</table>\n ";
+  echo "</table>\n";
+  echo "</div>\n";
 }
 
-require_once "trailer.inc";
+output_trailer();
 ?>

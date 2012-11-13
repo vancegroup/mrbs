@@ -2,7 +2,7 @@
 
 // $Id$
 
-require_once "defaultincludes.inc";
+require "defaultincludes.inc";
 require_once "version.inc";
 
 // Check the user is authorised for this page
@@ -36,5 +36,5 @@ echo "</p>\n";
  
 require_once "site_faq" . $faqfilelang . ".html";
 
-require_once "trailer.inc";
+output_trailer();
 ?>

@@ -21,7 +21,7 @@
 *                          example by having booking admins, user admins     *
 *                          snd system admins.  (System admins might be       *
 *                          necessary in the future if, for example, some     *
-*                          parameters curreently in the config file are      *
+*                          parameters currently in the config file are      *
 *                          made editable from MRBS)                          *
 *                                                                            *
 *                 Only admins with at least user editing rights (level >=    *
@@ -38,7 +38,7 @@
 
 // $Id$
 
-require_once "defaultincludes.inc";
+require "defaultincludes.inc";
 
 // Get non-standard form variables
 $Action = get_form_var('Action', 'string');
@@ -51,6 +51,9 @@ $name_not_unique = get_form_var('name_not_unique', 'int');
 $taken_name = get_form_var('taken_name', 'string');
 $pwd_not_match = get_form_var('pwd_not_match', 'string');
 $pwd_invalid = get_form_var('pwd_invalid', 'string');
+$ajax = get_form_var('ajax', 'int');  // Set if this is an Ajax request
+$datatable = get_form_var('datatable', 'int');  // Will only be set if we're using DataTables
+
 
 // Validates that the password conforms to the password policy
 // (Ideally this function should also be matched by client-side
@@ -123,137 +126,109 @@ function get_form_var_type($field)
 }
 
 
-// Produce the HTML for a freeze_panes sub-table
-//
-//   $info       an array containing the data
-//   $columns    the columns in that data to display
-//   $class      the class name tio assign to the table
-//   $action     whether an action button is required
-function freeze_panes_table_html($info, $columns, $class, $action=FALSE)
+function output_row(&$row)
 {
-  global $tbl_users, $PHP_SELF;
-  global $user, $level, $min_user_editing_level, $max_content_length;
-  global $fields, $auth;
+  global $ajax, $json_data;
+  global $level, $min_user_editing_level, $user;
+  global $fields, $ignore_columns, $select_options;
+  global $PHP_SELF;
   
-  $html = '';
-  $html .= "<div class=\"$class\">\n";
-  $html .= "<table class=\"admin_table\">\n";
-  $html .= "<thead>\n";
-  $html .= "<tr>";
-  if ($action)
+  $values = array();
+  
+  // First column, which is the name
+  $html_name = htmlspecialchars($row['name']);
+  // You can only edit a user if you have sufficient admin rights, or else if that user is yourself
+  if (($level >= $min_user_editing_level) || (strcasecmp($row['name'], $user) == 0))
   {
-    // First column which is an action button
-    $html .= "<th><div>" . get_vocab("action") . "</div></th>";
+    $link = htmlspecialchars(basename($PHP_SELF)) . "?Action=Edit&amp;Id=" . $row['id'];
+    $values[] = "<a title=\"$html_name\" href=\"$link\">$html_name</a>";
   }
-  
-  // Column headers
+  else
+  {
+    $values[] = "<span class=\"normal\" title=\"$html_name\">$html_name</span>";
+  }
+    
+  // Other columns
   foreach ($fields as $field)
   {
-    $fieldname = $field['name'];
-    if (in_array($fieldname, $columns))
+    $key = $field['name'];
+    if (!in_array($key, $ignore_columns))
     {
-      $html .= "<th><div>" . get_loc_field_name($tbl_users, $fieldname) . "</div></th>";
-    }
-  }
-
-  $html .= "</tr>\n";
-  $html .= "</thead>\n";
-  
-  $html .= "<tbody>\n";
-  $row_class = "odd_row";
-  foreach ($info as $line)
-  {
-    // Check whether ordinary users are allowed to see other users' details.  If not,
-    // then skip past this row if it's not the current user or the user is not an admin
-    if ($auth['only_admin_can_see_other_users'] &&
-        ($level < $min_user_editing_level) &&
-        (strcasecmp($line['name'], $user) != 0))
-    {
-      continue;
-    }
-    
-    $row_class = ($row_class == "even_row") ? "odd_row" : "even_row";
-    $html .= "<tr class=\"$row_class\">\n";
-    if ($action)
-    {
-      // First column (the action button)
-      $html .= "<td class=\"action\"><div>\n";
-      // You can only edit a user if you have sufficient admin rights, or else if that user is yourself
-      if (($level >= $min_user_editing_level) || (strcasecmp($line['name'], $user) == 0))
+      $col_value = $row[$key];
+      switch($key)
       {
-        $html .= "<form method=\"post\" action=\"" . htmlspecialchars(basename($PHP_SELF)) . "\">\n";
-        $html .= "<div>\n";
-        $html .= "<input type=\"hidden\" name=\"Action\" value=\"Edit\">\n";
-        $html .= "<input type=\"hidden\" name=\"Id\" value=\"" . $line['id'] . "\">\n";
-        $html .= "<input type=\"image\" class=\"button\" src=\"images/edit.png\"
-                   title=\"" . get_vocab("edit") . "\" alt=\"" . get_vocab("edit") . "\">\n";
-        $html .= "</div>\n";
-        $html .= "</form>\n";
-      }
-      else
-      {
-        $html .= "&nbsp;\n";
-      }
-      $html .= "</div></td>\n";
-    }
-    
-    // Column contents
-    foreach ($fields as $field)
-    {
-      $key = $field['name'];
-      if (in_array($key, $columns))
-      {
-        $col_value = $line[$key];
-        switch($key)
-        {
-          // special treatment for some fields
-          case 'level':
-            // the level field contains a code and we want to display a string
-            $html .= "<td><div>" . get_vocab("level_$col_value") . "</div></td>\n";
-            break;
-          case 'email':
-            // we don't want to truncate the email address
-            $html .= "<td><div>" . htmlspecialchars($col_value) . "</div></td>\n";
-            break;
-          default:
-            if (($field['nature'] == 'boolean') || 
-                (($field['nature'] == 'integer') && isset($field['length']) && ($field['length'] <= 2)) )
+        // special treatment for some fields
+        case 'level':
+          // the level field contains a code and we want to display a string
+          // (but we put the code in a span for sorting)
+          $values[] = "<span title=\"$col_value\"></span>" .
+                      "<div>" . get_vocab("level_$col_value") . "</div>";
+          break;
+        case 'email':
+          // we don't want to truncate the email address
+          $values[] = "<div>" . htmlspecialchars($col_value) . "</div>";
+          break;
+        default:
+          // Where there's an associative array of options, display
+          // the value rather than the key
+          if (isset($select_options["users.$key"]) &&
+              is_assoc($select_options["users.$key"]))
+          {
+            if (isset($select_options["users.$key"][$row[$key]]))
             {
-              // booleans: represent by a checkmark
-              $html .= "<td class=\"int\"><div>";
-              $html .= (!empty($col_value)) ? "<img src=\"images/check.png\" alt=\"check mark\" width=\"16\" height=\"16\">" : "&nbsp;";
-              $html .= "</div></td>\n";
-            }
-            elseif (($field['nature'] == 'integer') && isset($field['length']) && ($field['length'] > 2))
-            {
-              // integer values
-              $html .= "<td class=\"int\"><div>" . $col_value . "</div></td>\n";
+              $col_value = $select_options["users.$key"][$row[$key]];
             }
             else
             {
-               // strings
-              $html .= "<td title=\"" . htmlspecialchars($col_value) . "\"><div>";
-              // Truncate before conversion, otherwise you could chop off in the middle of an entity
-              $html .= htmlspecialchars(substr($col_value, 0, $max_content_length));
-              $html .= (strlen($col_value) > $max_content_length) ? " ..." : "";
-              $html .= "</div></td>\n";
+              $col_value = '';
             }
-            break;
-        }  // end switch
-      }
-    }  // end foreach
-    
-    $html .= "</tr>\n";
-    
-  }  // end while
-  
-  $html .= "</tbody>\n";
-  $html .= "</table>\n";
-  $html .= "</div>\n";
-  
-  return $html;
+            $values[] = "<div>" . htmlspecialchars($col_value) . "</div>";
+          }
+          elseif (($field['nature'] == 'boolean') || 
+              (($field['nature'] == 'integer') && isset($field['length']) && ($field['length'] <= 2)) )
+          {
+            // booleans: represent by a checkmark
+            $values[] = "<div class=\"int\">" .
+                        ((!empty($col_value)) ? "<img src=\"images/check.png\" alt=\"check mark\" width=\"16\" height=\"16\">" : "&nbsp;") .
+                         "</div>";
+          }
+          elseif (($field['nature'] == 'integer') && isset($field['length']) && ($field['length'] > 2))
+          {
+            // integer values
+            $values[] = "<div class=\"int\">" . $col_value . "</div>";
+          }
+          else
+          {
+             // strings
+            $values[] = "<div title=\"" . htmlspecialchars($col_value) . "\">" .
+                        htmlspecialchars($col_value) . "</div>";
+          }
+          break;
+      }  // end switch
+    }
+  }  // end foreach
+
+  if ($ajax)
+  {
+    $json_data['aaData'][] = $values;
+  }
+  else
+  {
+    echo "<tr>\n<td>\n";
+    echo implode("</td>\n<td>", $values);
+    echo "</td>\n</tr>\n";
+  }
 }
 
+// Set up for Ajax.   We need to know whether we're capable of dealing with Ajax
+// requests, which will only be if (a) the browser is using DataTables and (b)
+// we can do JSON encoding.    We also need to initialise the JSON data array.
+$ajax_capable = $datatable && function_exists('json_encode');
+
+if ($ajax)
+{
+  $json_data['aaData'] = array();
+}
 
 // Get the information about the fields in the users table
 $fields = sql_field_info($tbl_users);
@@ -415,7 +390,7 @@ if (isset($Action) && ( ($Action == "Edit") or ($Action == "Add") ))
                   case 'name':
                     // you cannot change a username (even your own) unless you have user editing rights
                     echo "<label for=\"$var_name\">$label_text:</label>\n";
-                    echo "<input id=\"$var_name\" name=\"$var_name\" type=\"text\" " .
+                    echo "<input id=\"$var_name\" name=\"$var_name\" type=\"text\" required aria-required " .
                          ((isset($maxlength["users.$key"])) ? "maxlength=\"" . $maxlength["users.$key"] . "\" " : '') .
                          (($level < $min_user_editing_level) ? "disabled=\"disabled\" " : "") .
                           "value=\"" . htmlspecialchars($data[$key]) . "\">\n";
@@ -426,7 +401,7 @@ if (isset($Action) && ( ($Action == "Edit") or ($Action == "Add") ))
                     }
                     break;
                   case 'email':
-                    generate_input($label_text, $var_name, $data[$key], FALSE, isset($maxlength["users.$key"]) ? $maxlength["users.$key"] : NULL);
+                    generate_input($label_text, $var_name, $data[$key], FALSE, isset($maxlength["users.$key"]) ? $maxlength["users.$key"] : NULL, 'type=email multiple');
                     break;
                   default:    
                     // Output a checkbox if it's a boolean or integer <= 2 bytes (which we will
@@ -441,7 +416,7 @@ if (isset($Action) && ( ($Action == "Edit") or ($Action == "Add") ))
                             ">\n";
                     }
                     // Output a select box if they want one
-                    elseif (count($select_options["users.$key"]) > 0)
+                    elseif (!empty($select_options["users.$key"]))
                     {
                       generate_select($label_text, $var_name, $data[$key], $select_options["users.$key"]);
                     }
@@ -521,7 +496,7 @@ if (isset($Action) && ( ($Action == "Edit") or ($Action == "Add") ))
           }
           ?>
           <input type="hidden" name="Action" value="Update">    
-          <input class="submit" type="submit" value="<?php echo(get_vocab("save")); ?>">
+          <input class="submit default_action" type="submit" value="<?php echo(get_vocab("save")); ?>">
           
         </div>
         </fieldset>
@@ -540,6 +515,16 @@ if (isset($Action) && ( ($Action == "Edit") or ($Action == "Add") ))
         echo "</div>\n";
         echo "</form>\n";
       }
+      // otherwise (ie when adding, or else editing when not an admin) give them a cancel button
+      // which takes them back to the user list and does nothing
+      else
+      {
+        echo "<form id=\"form_delete_users\" method=\"post\" action=\"" . htmlspecialchars(basename($PHP_SELF)) . "\">\n";
+        echo "<div>\n";
+        echo "<input class=\"submit\" type=\"submit\" value=\"" . get_vocab("back") . "\">\n";
+        echo "</div>\n";
+        echo "</form>\n";
+      }
 ?>
       </div>
 <?php
@@ -555,7 +540,7 @@ if (isset($Action) && ( ($Action == "Edit") or ($Action == "Add") ))
 if (isset($Action) && ($Action == "Update"))
 {
   // If you haven't got the rights to do this, then exit
-  $my_id = sql_query1("SELECT id FROM $tbl_users WHERE name='".addslashes($user)."' LIMIT 1");
+  $my_id = sql_query1("SELECT id FROM $tbl_users WHERE name='".sql_escape($user)."' LIMIT 1");
   if (($level < $min_user_editing_level) && ($Id != $my_id ))
   {
     Header("Location: edit_users.php");
@@ -650,7 +635,7 @@ if (isset($Action) && ($Action == "Update"))
           // If it's a new user, then to check to see if there are any rows with that name.
           // If it's an update, then check to see if there are any rows with that name, except
           // for that user.
-          $query = "SELECT id FROM $tbl_users WHERE name='" . addslashes($value) . "'";
+          $query = "SELECT id FROM $tbl_users WHERE name='" . sql_escape($value) . "'";
           if ($Id >= 0)
           {
             $query .= " AND id!='$Id'";
@@ -729,7 +714,7 @@ if (isset($Action) && ($Action == "Update"))
             }
             break;
           default:
-            $value = "'" . addslashes($value) . "'";
+            $value = "'" . sql_escape($value) . "'";
             break;
         }
        
@@ -853,56 +838,97 @@ if (isset($Action) && ($Action == "Delete"))
 
 /* Print the standard MRBS header */
 
-print_header(0, 0, 0, "", "");
-
-print "<h2>" . get_vocab("user_list") . "</h2>\n";
-
-if ($level >= $min_user_editing_level) /* Administrators get the right to add new users */
+if (!$ajax)
 {
-  print "<form id=\"add_new_user\" method=\"post\" action=\"" . htmlspecialchars(basename($PHP_SELF)) . "\">\n";
-  print "  <div>\n";
-  print "    <input type=\"hidden\" name=\"Action\" value=\"Add\">\n";
-  print "    <input type=\"hidden\" name=\"Id\" value=\"-1\">\n";
-  print "    <input type=\"submit\" value=\"" . get_vocab("add_new_user") . "\">\n";
-  print "  </div>\n";
-  print "</form>\n";
+  print_header(0, 0, 0, "", "");
+
+  print "<h2>" . get_vocab("user_list") . "</h2>\n";
+
+  if ($level >= $min_user_editing_level) /* Administrators get the right to add new users */
+  {
+    print "<form id=\"add_new_user\" method=\"post\" action=\"" . htmlspecialchars(basename($PHP_SELF)) . "\">\n";
+    print "  <div>\n";
+    print "    <input type=\"hidden\" name=\"Action\" value=\"Add\">\n";
+    print "    <input type=\"hidden\" name=\"Id\" value=\"-1\">\n";
+    print "    <input type=\"submit\" value=\"" . get_vocab("add_new_user") . "\">\n";
+    print "  </div>\n";
+    print "</form>\n";
+  }
 }
 
 if ($initial_user_creation != 1)   // don't print the user table if there are no users
 {
   // Get the user information
   $res = sql_query("SELECT * FROM $tbl_users ORDER BY level DESC, name");
-  // Build an array with the user info
-  $info = array();
-  for ($i = 0; ($row = sql_row_keyed($res, $i)); $i++)
-  {
-    $info[] = $row;
-  }
-  // Display it in a table [Actually two tables side by side so that we can
-  // achieve a "Freeze Panes" effect: there doesn't seem to be a good way of
-  // getting a colgroup to scroll, so we have to distort the mark-up a little]
-  echo "<div id=\"user_list\">\n";
-  echo "<div class=\"freeze_panes\">\n";
-  // (a) the "header" columns containing the user names
-  // For the header column we just want to use the level and name fields
-  $columns = array('level', 'name');
-  echo freeze_panes_table_html($info, $columns, 'header_columns', TRUE);
   
-  // (b) the "body" columns containing the user info
-  // For the body column we want all the other columns, except the id and password
-  $columns[] = 'id';
-  $columns[] = 'password';
-  $all_columns = array();
-  foreach ($fields as $field)
+  // Display the data in a table
+  $ignore_columns = array('id', 'password', 'name'); // We don't display these columns or they get special treatment
+  
+  if (!$ajax)
   {
-    $all_columns[] = $field['name'];
+    echo "<div id=\"user_list\" class=\"datatable_container\">\n";
+    echo "<table class=\"admin_table display\" id=\"users_table\">\n";
+  
+    // The table header
+    echo "<thead>\n";
+    echo "<tr>";
+  
+    // First column which is the name
+    echo "<th>" . get_vocab("users.name") . "</th>\n";
+  
+    // Other column headers
+    foreach ($fields as $field)
+    {
+      $fieldname = $field['name'];
+    
+      if (!in_array($fieldname, $ignore_columns))
+      {
+        echo "<th>" . get_loc_field_name($tbl_users, $fieldname) . "</th>";
+      }
+    }
+  
+    echo "</tr>\n";
+    echo "</thead>\n";
+  
+    // The table body
+    echo "<tbody>\n";
   }
-  $columns = array_diff($all_columns, $columns);
-  echo freeze_panes_table_html($info, $columns, 'body_columns', FALSE);
-  echo "</div>\n";   // freeze_panes
-  echo "</div>\n";
+  
+  // If we're Ajax capable and this is not an Ajax request then don't ouput
+  // the table body, because that's going to be sent later in response to
+  // an Ajax request
+  if (!$ajax_capable || $ajax)
+  {
+    for ($i = 0; ($row = sql_row_keyed($res, $i)); $i++)
+    {
+      // You can only see this row if (a) we allow everybody to see all rows or
+      // (b) you are an admin or (c) you are this user
+      if (!$auth['only_admin_can_see_other_users'] ||
+          ($level >= $min_user_viewing_level) ||
+          (strcasecmp($row['name'], $user) == 0))
+      {
+        output_row($row);
+      }
+    }
+  }
+  
+  if (!$ajax)
+  {
+    echo "</tbody>\n";
+  
+    echo "</table>\n";
+    echo "</div>\n";
+  }
+  
 }   // ($initial_user_creation != 1)
 
-require_once "trailer.inc";
+if ($ajax)
+{
+  echo json_encode($json_data);
+}
+else
+{
+  output_trailer();
+}
 
 ?>
